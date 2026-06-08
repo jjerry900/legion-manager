@@ -15,6 +15,9 @@ export default function Page() {
   const [bossName, setBossName] = useState("");
   const [selectedDate, setSelectedDate] = useState("");
   const [selectedDay, setSelectedDay] = useState("");
+  const [page, setPage] = useState(1);
+
+const PAGE_SIZE = 10;
 
   const [selectedBoss, setSelectedBoss] = useState<Boss | null>(null);
   const [open, setOpen] = useState(false);
@@ -157,15 +160,25 @@ export default function Page() {
 }
 
   function openBoss(b: Boss) {
-    setSelectedBoss(b);
-    setOpen(true);
-    const initial: Record<string, boolean> = {};
-    members.forEach((m) => {
-      const found = att.find((a) => a.boss_id === b.id && a.user_name === m.name && a.checked);
-      initial[m.name] = !!found;
-    });
-    setTemp(initial);
-  }
+  setSelectedBoss(b);
+  setOpen(true);
+  setPage(1);
+
+  const initial: Record<string, boolean> = {};
+
+  members.forEach((m) => {
+    const found = att.find(
+      (a) =>
+        a.boss_id === b.id &&
+        a.user_name === m.name &&
+        a.checked
+    );
+
+    initial[m.name] = !!found;
+  });
+
+  setTemp(initial);
+}
 
   function toggle(name: string) { setTemp((prev) => ({ ...prev, [name]: !prev[name] })); }
 
@@ -184,6 +197,14 @@ export default function Page() {
     await supabase.from("attendance").insert(rows);
     setTemp({}); setPw(""); setOpen(false); load();
   }
+  const totalPages = Math.ceil(
+  members.length / PAGE_SIZE
+);
+
+const currentMembers = members.slice(
+  (page - 1) * PAGE_SIZE,
+  page * PAGE_SIZE
+);
 
   const box = { background: "#fff", padding: 12, borderRadius: 12, boxShadow: "0 2px 6px rgba(0,0,0,0.05)" };
   const input = { width: "100%", boxSizing: "border-box" as const, padding: 10, borderRadius: 10, border: "1px solid #ddd", fontSize: 14, outline: "none" };
@@ -228,12 +249,49 @@ export default function Page() {
               <h3>🐰 {selectedBoss.name}</h3>
               <button onClick={() => setOpen(false)} style={{ border: "none", background: "none", cursor: "pointer" }}>✕</button>
             </div>
-            {members.map((m) => (
+            {currentMembers.map((m) => (
               <div key={m.id} style={{ display: "flex", justifyContent: "space-between", padding: "6px 0" }}>
                 <span>{m.name}</span>
                 <input type="checkbox" checked={!!temp[m.name]} onChange={() => toggle(m.name)} />
               </div>
             ))}
+            <div
+  style={{
+    display: "flex",
+    justifyContent: "center",
+    gap: 8,
+    marginTop: 12,
+    marginBottom: 12,
+  }}
+>
+  <button
+    disabled={page === 1}
+    onClick={() => setPage(page - 1)}
+    style={{
+      padding: "6px 12px",
+      borderRadius: 8,
+      border: "1px solid #ddd",
+    }}
+  >
+    ◀
+  </button>
+
+  <span>
+    {page} / {totalPages}
+  </span>
+
+  <button
+    disabled={page === totalPages}
+    onClick={() => setPage(page + 1)}
+    style={{
+      padding: "6px 12px",
+      borderRadius: 8,
+      border: "1px solid #ddd",
+    }}
+  >
+    ▶
+  </button>
+</div>
             <input type="password" placeholder="비밀번호" value={pw} onChange={(e) => setPw(e.target.value)} style={{ ...input, marginTop: 12 }} />
             <button onClick={save} style={{ width: "100%", marginTop: 10, padding: 10, borderRadius: 10, border: "none", background: "#ff6fae", color: "#fff" }}>💾 저장</button>
           </div>
