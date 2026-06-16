@@ -10,6 +10,8 @@ type Member = {
   attack: number;
   defense: number;
   accuracy: number;
+  memo: string;
+  updated_at: string;
 };
 
 export default function Page() {
@@ -36,11 +38,12 @@ export default function Page() {
   // ✏️ 수정
   const [editId, setEditId] = useState<string | null>(null);
   const [editForm, setEditForm] = useState({
-    class: "",
-    attack: 0,
-    defense: 0,
-    accuracy: 0,
-  });
+  class: "",
+  attack: 0,
+  defense: 0,
+  accuracy: 0,
+  memo: "",
+});
 
   const fetchMembers = async () => {
     const { data } = await supabase
@@ -106,22 +109,25 @@ export default function Page() {
   const startEdit = (m: Member) => {
     setEditId(m.id);
     setEditForm({
-      class: m.class,
-      attack: m.attack,
-      defense: m.defense,
-      accuracy: m.accuracy,
-    });
-  };
+  class: m.class,
+  attack: m.attack,
+  defense: m.defense,
+  accuracy: m.accuracy,
+  memo: m.memo || "",
+});
+  }
 
   const saveEdit = async (id: string) => {
     await supabase
       .from("members")
       .update({
-        class: editForm.class,
-        attack: Number(editForm.attack),
-        defense: Number(editForm.defense),
-        accuracy: Number(editForm.accuracy),
-      })
+  class: editForm.class,
+  attack: Number(editForm.attack),
+  defense: Number(editForm.defense),
+  accuracy: Number(editForm.accuracy),
+  memo: editForm.memo,
+  updated_at: new Date().toISOString(),
+})
       .eq("id", id);
 
     await fetchMembers();
@@ -328,6 +334,21 @@ export default function Page() {
                   </div>
                 </div>
 
+                <div>
+  📝 신화 / 메모
+  <input
+    className="input"
+    value={editForm.memo}
+    onChange={(e) =>
+      setEditForm({
+        ...editForm,
+        memo: e.target.value,
+      })
+    }
+    placeholder="신화 3개 / 전설 2개"
+  />
+</div>
+
                 <div className="editBtns">
                   <button
                     className="btn save"
@@ -361,6 +382,17 @@ export default function Page() {
                 <div className="power">
                   ⭐ 전투력 {power(m)}
                 </div>
+<div className="memo">
+  📝 {m.memo || "메모 없음"}
+</div>
+
+<div className="updated">
+  수정일 :
+  {m.updated_at
+    ? new Date(m.updated_at).toLocaleDateString("ko-KR")
+    : "-"}
+</div>
+
 
                 <button
                   className="btn edit"
@@ -542,6 +574,20 @@ export default function Page() {
           gap: 10px;
           margin-top: 10px;
         }
+          .memo {
+  margin-top: 8px;
+  font-size: 14px;
+  color: #555;
+  background: #f8f8f8;
+  padding: 8px;
+  border-radius: 10px;
+}
+
+.updated {
+  margin-top: 6px;
+  font-size: 12px;
+  color: #999;
+}
       `}</style>
     </div>
   );

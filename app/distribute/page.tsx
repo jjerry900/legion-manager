@@ -135,11 +135,16 @@ export default function DistributionPage() {
   }
 
   const weekBossIds = useMemo(() => {
-    if (week === 1) {
-      return bosses.filter((b) => b.week === 1).map((b) => b.id);
-    }
-    return bosses.filter((b) => b.week === 1 || b.week === 2).map((b) => b.id);
-  }, [bosses, week]);
+  if (week === 1) {
+    return bosses
+      .filter((b) => b.week === 1)
+      .map((b) => b.id);
+  }
+
+  return bosses
+    .filter((b) => b.week === 1 || b.week === 2)
+    .map((b) => b.id);
+}, [bosses, week]);
 
   const stats = useMemo(() => {
     const totalBosses = weekBossIds.length || 1;
