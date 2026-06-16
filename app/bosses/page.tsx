@@ -3,9 +3,24 @@
 import { useEffect, useState } from "react";
 import { supabase } from "@/lib/supabase";
 
-type Member = { id: string; name: string; };
-type Boss = { id: string; name: string; day: string; date: string; };
-type Attendance = { id: string; boss_id: string; user_name: string; checked: boolean; };
+type Member = {
+  id: string;
+  name: string;
+};
+
+type Boss = {
+  id: string;
+  name: string;
+  day: string;
+  date: string;
+};
+
+type Attendance = {
+  id: string;
+  boss_id: string;
+  user_name: string;
+  checked: boolean;
+};
 
 export default function Page() {
   const [members, setMembers] = useState<Member[]>([]);
@@ -15,288 +30,470 @@ export default function Page() {
   const [bossName, setBossName] = useState("");
   const [selectedDate, setSelectedDate] = useState("");
   const [selectedDay, setSelectedDay] = useState("");
-  const [page, setPage] = useState(1);
-
-const PAGE_SIZE = 10;
 
   const [selectedBoss, setSelectedBoss] = useState<Boss | null>(null);
   const [open, setOpen] = useState(false);
+
   const [temp, setTemp] = useState<Record<string, boolean>>({});
   const [pw, setPw] = useState("");
 
   const [searchDate, setSearchDate] = useState("");
 
+  const [currentPage, setCurrentPage] = useState(1);
+  const ITEMS_PER_PAGE = 5;
+
   async function load() {
     const [m, b, a] = await Promise.all([
       supabase.from("members").select("*").order("name"),
-      supabase.from("bosses").select("*").order("date"),
+      supabase.from("bosses").select("*").order("date", { ascending: false }),
       supabase.from("attendance").select("*"),
     ]);
+
     setMembers(m.data ?? []);
     setBosses(b.data ?? []);
     setAtt(a.data ?? []);
   }
 
-  useEffect(() => { load(); }, []);
+  useEffect(() => {
+    load();
+  }, []);
 
   function pickDate(value: string) {
     setSelectedDate(value);
+
     const d = new Date(value);
     const days = ["일", "월", "화", "수", "목", "금", "토"];
+
     setSelectedDay(days[d.getDay()]);
   }
 
   async function addBoss() {
-  if (!bossName.trim()) {
-    alert("보스 이름 입력");
-    return;
-  }
+    if (!bossName.trim()) {
+      alert("보스 이름 입력");
+      return;
+    }
 
-  if (!selectedDate) {
-    alert("날짜 선택");
-    return;
-  }
+    if (!selectedDate) {
+      alert("날짜 선택");
+      return;
+    }
 
-  const { data, error } = await supabase
-    .from("bosses")
-    .insert([
+    const { error } = await supabase.from("bosses").insert([
       {
         name: bossName,
         date: selectedDate,
         day: selectedDay,
       },
-    ])
-    .select();
+    ]);
 
-  console.log("insert result", data);
-  console.log("insert error", error);
+    if (error) {
+      alert(error.message);
+      return;
+    }
 
-  if (error) {
-    alert(error.message);
-    return;
+    setBossName("");
+    setSelectedDate("");
+
+    load();
   }
 
-  await load();
+  async function deleteBoss(e: React.MouseEvent, bossId: string) {
+    e.stopPropagation();
 
-  setBossName("");
-  setSelectedDate("");
-  setSelectedDay("");
-}
+    const pwCheck = prompt("관리자 비밀번호");
 
-  async function deleteBoss(bossId: string) {
-  const password = prompt("관리자 비밀번호를 입력하세요.");
+    if (pwCheck !== "1234") {
+      alert("비밀번호 오류");
+      return;
+    }
 
-  if (password !== "1234") {
-    alert("비밀번호가 틀렸습니다.");
-    return;
+    if (!confirm("삭제하시겠습니까?")) return;
+
+    await supabase.from("attendance").delete().eq("boss_id", bossId);
+    await supabase.from("bosses").delete().eq("id", bossId);
+
+    load();
   }
-
-  if (!confirm("정말 삭제하시겠습니까?")) {
-    return;
-  }
-
-  const { error: attendanceError } = await supabase
-    .from("attendance")
-    .delete()
-    .eq("boss_id", bossId);
-
-  if (attendanceError) {
-    alert(attendanceError.message);
-    return;
-  }
-
-  const { error: bossError } = await supabase
-    .from("bosses")
-    .delete()
-    .eq("id", bossId);
-
-  if (bossError) {
-    alert(bossError.message);
-    return;
-  }
-
-  if (selectedBoss?.id === bossId) {
-    setSelectedBoss(null);
-    setOpen(false);
-  }
-
-  load();
-}
-
-  async function resetAll() {
-  const password = prompt("관리자 비밀번호를 입력하세요.");
-
-  if (password !== "1234") {
-    alert("비밀번호가 틀렸습니다.");
-    return;
-  }
-
-  if (!confirm("모든 데이터를 삭제합니다. 정말 진행하시겠습니까?")) {
-    return;
-  }
-
-  const { error: attendanceError } = await supabase
-    .from("attendance")
-    .delete()
-    .not("id", "is", null);
-
-  if (attendanceError) {
-    alert(attendanceError.message);
-    return;
-  }
-
-  const { error: bossError } = await supabase
-    .from("bosses")
-    .delete()
-    .not("id", "is", null);
-
-  if (bossError) {
-    alert(bossError.message);
-    return;
-  }
-
-  alert("전체 초기화 완료");
-  load();
-}
 
   function openBoss(b: Boss) {
-  setSelectedBoss(b);
-  setOpen(true);
-  setPage(1);
+    setSelectedBoss(b);
+    setCurrentPage(1);
 
-  const initial: Record<string, boolean> = {};
+    const initial: Record<string, boolean> = {};
 
-  members.forEach((m) => {
-    const found = att.find(
-      (a) =>
-        a.boss_id === b.id &&
-        a.user_name === m.name &&
-        a.checked
-    );
+    members.forEach((m) => {
+      const found = att.find(
+        (a) =>
+          a.boss_id === b.id && a.user_name === m.name && a.checked
+      );
 
-    initial[m.name] = !!found;
-  });
+      initial[m.name] = !!found;
+    });
 
-  setTemp(initial);
-}
-
-  function toggle(name: string) { setTemp((prev) => ({ ...prev, [name]: !prev[name] })); }
-
-  function rate(bossId: string) {
-    const total = members.length || 1;
-    const checked = members.filter((m) => att.some((a) => a.boss_id === bossId && a.user_name === m.name && a.checked)).length;
-    return Math.round((checked / total) * 100);
+    setTemp(initial);
+    setOpen(true);
   }
-
-  const filteredBosses = bosses.filter((boss) => !searchDate || boss.date === searchDate);
 
   async function save() {
-    if (!selectedBoss || pw !== "1234") { alert("비밀번호를 확인하세요."); return; }
-    const rows = members.map((m) => ({ boss_id: selectedBoss.id, user_name: m.name, checked: !!temp[m.name] }));
+    if (!selectedBoss) return;
+
+    if (pw !== "1234") {
+      alert("비밀번호 오류");
+      return;
+    }
+
+    const rows = members.map((m) => ({
+      boss_id: selectedBoss.id,
+      user_name: m.name,
+      checked: !!temp[m.name],
+    }));
+
     await supabase.from("attendance").delete().eq("boss_id", selectedBoss.id);
     await supabase.from("attendance").insert(rows);
-    setTemp({}); setPw(""); setOpen(false); load();
+
+    setPw("");
+    setOpen(false);
+
+    load();
   }
-  const totalPages = Math.ceil(
-  members.length / PAGE_SIZE
-);
 
-const currentMembers = members.slice(
-  (page - 1) * PAGE_SIZE,
-  page * PAGE_SIZE
-);
+  const filteredBosses = bosses.filter(
+    (b) => !searchDate || b.date === searchDate
+  );
 
-  const box = { background: "#fff", padding: 12, borderRadius: 12, boxShadow: "0 2px 6px rgba(0,0,0,0.05)" };
-  const input = { width: "100%", boxSizing: "border-box" as const, padding: 10, borderRadius: 10, border: "1px solid #ddd", fontSize: 14, outline: "none" };
+  const totalPages = Math.ceil(members.length / ITEMS_PER_PAGE);
+  const indexOfLastItem = currentPage * ITEMS_PER_PAGE;
+  const indexOfFirstItem = indexOfLastItem - ITEMS_PER_PAGE;
+  const currentMembers = members.slice(indexOfFirstItem, indexOfLastItem);
 
   return (
-    <div style={{ padding: 18, background: "#f7f7ff", minHeight: "100vh", maxWidth: 600, margin: "0 auto" }}>
-      <h2 style={{ fontSize: 22, marginBottom: 12 }}>⚔ 보스 시스템</h2>
+    <div className="wrap">
+      <h1 className="title">⚔ 보스 관리</h1>
 
-      <div style={{ ...box, marginBottom: 12 }}>
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginBottom: 10 }}>
-          <input type="date" value={selectedDate} onChange={(e) => pickDate(e.target.value)} style={input} />
-          <input value={bossName} onChange={(e) => setBossName(e.target.value)} style={input} placeholder="보스 이름" />
-        </div>
-        <div style={{ display: "flex", gap: 8 }}>
-          <button onClick={addBoss} style={{ flex: 1, padding: 10, borderRadius: 10, border: "none", background: "#ff6fae", color: "#fff", cursor: "pointer" }}>➕ 등록</button>
-          <button onClick={resetAll} style={{ flex: 1, padding: 10, borderRadius: 10, border: "none", background: "#ff4d4f", color: "#fff", cursor: "pointer" }}>🗑 전체 초기화</button>
+      <div className="card">
+        <input
+          type="date"
+          value={selectedDate}
+          onChange={(e) => pickDate(e.target.value)}
+        />
+
+        <input
+          value={bossName}
+          onChange={(e) => setBossName(e.target.value)}
+          placeholder="보스 이름"
+        />
+
+        <button onClick={addBoss}>➕ 보스 추가</button>
+
+        <div className="filter">
+          <input
+            type="date"
+            value={searchDate}
+            onChange={(e) => setSearchDate(e.target.value)}
+          />
+
+          <button className="gray" onClick={() => setSearchDate("")}>
+            전체
+          </button>
         </div>
       </div>
 
-      <div style={{ ...box, display: "flex", gap: 8, alignItems: "center", marginBottom: 12 }}>
-        <input type="date" value={searchDate} onChange={(e) => setSearchDate(e.target.value)} style={input} />
-        <button onClick={() => setSearchDate("")} style={{ padding: "10px 20px", borderRadius: 10, border: "none", background: "#666", color: "#fff", cursor: "pointer", whiteSpace: "nowrap" }}>전체</button>
-      </div>
-
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+      <div className="bossList">
         {filteredBosses.map((b) => (
-          <div key={b.id} style={{ ...box, position: "relative" }}>
-            <button onClick={() => deleteBoss(b.id)} style={{ position: "absolute", top: 8, right: 8, width: 24, height: 24, border: "none", borderRadius: 8, background: "#ff4d4f", color: "#fff", cursor: "pointer" }}>✕</button>
-            <div onClick={() => openBoss(b)} style={{ cursor: "pointer" }}>
-              <div style={{ fontWeight: 700, fontSize: 14 }}>⚔ {b.name}</div>
-              <div style={{ fontSize: 12, color: "#777", marginTop: 4 }}>{b.date} ({b.day})</div>
-              <div style={{ marginTop: 6, fontSize: 12 }}>📊 참여율 {rate(b.id)}%</div>
+          <div key={b.id} className="bossCard" onClick={() => openBoss(b)}>
+            <div>
+              <div className="bossName">{b.name}</div>
+              <div className="sub">
+                {b.date} ({b.day})
+              </div>
             </div>
+
+            <button className="delete" onClick={(e) => deleteBoss(e, b.id)}>
+              삭제
+            </button>
           </div>
         ))}
       </div>
 
       {open && selectedBoss && (
-        <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.4)", display: "flex", justifyContent: "center", alignItems: "center", padding: 12 }}>
-          <div style={{ width: 320, background: "#fff", borderRadius: 14, padding: 16 }}>
-            <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 10 }}>
-              <h3>🐰 {selectedBoss.name}</h3>
-              <button onClick={() => setOpen(false)} style={{ border: "none", background: "none", cursor: "pointer" }}>✕</button>
+        <div className="overlay" onClick={() => setOpen(false)}>
+          <div className="modal" onClick={(e) => e.stopPropagation()}>
+            {/* 💡 헤더 영역에 제목과 닫기(X) 버튼 배치 */}
+            <div className="modalHeader">
+              <h2>⚔ {selectedBoss.name}</h2>
+              <button className="closeBtn" onClick={() => setOpen(false)}>
+                ✕
+              </button>
             </div>
-            {currentMembers.map((m) => (
-              <div key={m.id} style={{ display: "flex", justifyContent: "space-between", padding: "6px 0" }}>
-                <span>{m.name}</span>
-                <input type="checkbox" checked={!!temp[m.name]} onChange={() => toggle(m.name)} />
-              </div>
-            ))}
-            <div
-  style={{
-    display: "flex",
-    justifyContent: "center",
-    gap: 8,
-    marginTop: 12,
-    marginBottom: 12,
-  }}
->
-  <button
-    disabled={page === 1}
-    onClick={() => setPage(page - 1)}
-    style={{
-      padding: "6px 12px",
-      borderRadius: 8,
-      border: "1px solid #ddd",
-    }}
-  >
-    ◀
-  </button>
 
-  <span>
-    {page} / {totalPages}
-  </span>
+            <div className="pageIndicator">
+              명단 체크 ({Math.min(indexOfLastItem, members.length)} / {members.length})
+            </div>
 
-  <button
-    disabled={page === totalPages}
-    onClick={() => setPage(page + 1)}
-    style={{
-      padding: "6px 12px",
-      borderRadius: 8,
-      border: "1px solid #ddd",
-    }}
-  >
-    ▶
-  </button>
-</div>
-            <input type="password" placeholder="비밀번호" value={pw} onChange={(e) => setPw(e.target.value)} style={{ ...input, marginTop: 12 }} />
-            <button onClick={save} style={{ width: "100%", marginTop: 10, padding: 10, borderRadius: 10, border: "none", background: "#ff6fae", color: "#fff" }}>💾 저장</button>
+            <div className="memberList">
+              {currentMembers.map((m) => (
+                <div key={m.id} className="memberRow">
+                  <span>{m.name}</span>
+
+                  <input
+                    type="checkbox"
+                    checked={!!temp[m.name]}
+                    onChange={() =>
+                      setTemp((p) => ({
+                        ...p,
+                        [m.name]: !p[m.name],
+                      }))
+                    }
+                  />
+                </div>
+              ))}
+            </div>
+
+            <div className="paginationControls">
+              <button
+                className="pageBtn"
+                disabled={currentPage === 1}
+                onClick={() => setCurrentPage((p) => p - 1)}
+              >
+                이전
+              </button>
+              <span className="pageNumber">
+                {currentPage} / {totalPages || 1}
+              </span>
+              <button
+                className="pageBtn"
+                disabled={currentPage === totalPages || totalPages === 0}
+                onClick={() => setCurrentPage((p) => p + 1)}
+              >
+                다음
+              </button>
+            </div>
+
+            <input
+              type="password"
+              placeholder="관리자 비밀번호"
+              value={pw}
+              onChange={(e) => setPw(e.target.value)}
+              style={{ marginTop: "20px" }}
+            />
+
+            {/* 💡 파란색에서 핑크색으로 수정 */}
+            <button className="save" onClick={save}>
+              저장
+            </button>
           </div>
         </div>
       )}
+
+      <style jsx>{`
+        .wrap {
+          width: 100%;
+          max-width: 1000px;
+          margin: 0 auto;
+          padding: 24px;
+        }
+
+        .title {
+          font-size: 28px;
+          font-weight: 800;
+          margin-bottom: 20px;
+        }
+
+        .card {
+          background: white;
+          padding: 20px;
+          border-radius: 16px;
+          display: flex;
+          flex-direction: column;
+          gap: 10px;
+          margin-bottom: 20px;
+        }
+
+        input {
+          width: 100%;
+          padding: 12px;
+          border: 1px solid #ddd;
+          border-radius: 10px;
+        }
+
+        button {
+          padding: 12px;
+          border: none;
+          border-radius: 10px;
+          cursor: pointer;
+          background: #ff5ea8;
+          color: white;
+          font-weight: 700;
+        }
+
+        .gray {
+          background: #e5e7eb;
+          color: black;
+        }
+
+        .filter {
+          display: flex;
+          gap: 10px;
+        }
+
+        .bossList {
+          display: flex;
+          flex-direction: column;
+          gap: 12px;
+        }
+
+        .bossCard {
+          background: white;
+          padding: 16px;
+          border-radius: 14px;
+          display: flex;
+          justify-content: space-between;
+          align-items: center;
+          cursor: pointer;
+        }
+
+        .bossName {
+          font-size: 17px;
+          font-weight: 700;
+        }
+
+        .sub {
+          color: #666;
+          font-size: 13px;
+        }
+
+        .delete {
+          background: #fee2e2;
+          color: #ef4444;
+        }
+
+        .overlay {
+          position: fixed;
+          inset: 0;
+          background: rgba(0, 0, 0, 0.5);
+          display: flex;
+          justify-content: center;
+          align-items: center;
+          z-index: 9999;
+        }
+
+        .modal {
+          width: 100%;
+          max-width: 600px;
+          background: white;
+          border-radius: 20px;
+          padding: 20px;
+          max-height: 80vh;
+          overflow-y: auto;
+          position: relative;
+        }
+
+        /* 💡 상단 헤더 레이아웃 추가 */
+        .modalHeader {
+          display: flex;
+          justify-content: space-between;
+          align-items: center;
+        }
+
+        .modalHeader h2 {
+          margin: 0;
+        }
+
+        /* 💡 닫기 버튼 스타일 */
+        .closeBtn {
+          background: transparent;
+          color: #9ca3af;
+          font-size: 20px;
+          padding: 4px 8px;
+        }
+
+        .closeBtn:hover {
+          color: #4b5563;
+        }
+
+        .pageIndicator {
+          font-size: 14px;
+          color: #666;
+          margin-top: 10px;
+          text-align: right;
+        }
+
+        .memberList {
+          margin-top: 8px;
+          border: 1px solid #eee;
+          border-radius: 12px;
+          overflow: hidden;
+        }
+
+        .memberRow {
+          display: flex;
+          justify-content: space-between;
+          align-items: center;
+          padding: 12px 16px;
+          border-bottom: 1px solid #eee;
+        }
+
+        .memberRow:last-child {
+          border-bottom: none;
+        }
+
+        .memberRow input {
+          width: 20px;
+          height: 20px;
+        }
+
+        /* 💡 체크박스 포인트 컬러 변경 (선택 사항) */
+        .memberRow input:checked {
+          accent-color: #ff5ea8;
+        }
+
+        .paginationControls {
+          display: flex;
+          justify-content: center;
+          align-items: center;
+          gap: 20px;
+          margin-top: 15px;
+        }
+
+        .pageBtn {
+          background: #f3f4f6;
+          color: #1f2937;
+          padding: 8px 16px;
+          font-size: 14px;
+        }
+
+        .pageBtn:disabled {
+          background: #e5e7eb;
+          color: #9ca3af;
+          cursor: not-allowed;
+        }
+
+        .pageNumber {
+          font-weight: 600;
+          font-size: 15px;
+        }
+
+        /* 💡 파란색(#2563eb)에서 메인 테마인 핑크색(#ff5ea8)으로 수정 */
+        .save {
+          width: 100%;
+          margin-top: 15px;
+          background: #ff5ea8; 
+        }
+
+        @media (max-width: 768px) {
+          .wrap {
+            padding: 12px;
+          }
+
+          .modal {
+            width: 95%;
+          }
+
+          .filter {
+            flex-direction: column;
+          }
+        }
+      `}</style>
     </div>
   );
 }

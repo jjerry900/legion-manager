@@ -366,7 +366,7 @@ export default function Page() {
                   className="btn edit"
                   onClick={() => startEdit(m)}
                 >
-                  ✏️수정
+                  ✏️
                 </button>
               </>
             )}
