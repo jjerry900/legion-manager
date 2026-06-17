@@ -38,12 +38,12 @@ export default function Page() {
   // ✏️ 수정
   const [editId, setEditId] = useState<string | null>(null);
   const [editForm, setEditForm] = useState({
-    class: "",
-    attack: 0,
-    defense: 0,
-    accuracy: 0,
-    memo: "",
-  });
+  class: "",
+  attack: 0,
+  defense: 0,
+  accuracy: 0,
+  memo: "",
+});
 
   const fetchMembers = async () => {
     const { data } = await supabase
@@ -109,25 +109,25 @@ export default function Page() {
   const startEdit = (m: Member) => {
     setEditId(m.id);
     setEditForm({
-      class: m.class,
-      attack: m.attack,
-      defense: m.defense,
-      accuracy: m.accuracy,
-      memo: m.memo || "",
-    });
-  };
+  class: m.class,
+  attack: m.attack,
+  defense: m.defense,
+  accuracy: m.accuracy,
+  memo: m.memo || "",
+});
+  }
 
   const saveEdit = async (id: string) => {
     await supabase
       .from("members")
       .update({
-        class: editForm.class,
-        attack: Number(editForm.attack),
-        defense: Number(editForm.defense),
-        accuracy: Number(editForm.accuracy),
-        memo: editForm.memo,
-        updated_at: new Date().toISOString(),
-      })
+  class: editForm.class,
+  attack: Number(editForm.attack),
+  defense: Number(editForm.defense),
+  accuracy: Number(editForm.accuracy),
+  memo: editForm.memo,
+  updated_at: new Date().toISOString(),
+})
       .eq("id", id);
 
     await fetchMembers();
@@ -143,25 +143,19 @@ export default function Page() {
 
   return (
     <div className="bg">
-      {/* 🏰 타이틀 영역 (헤더 정렬 보정) */}
-      <div className="header-top-area">
-        <h1 className="title">🏰 길드원 목록</h1>
-      </div>
+      <h1 className="title">🏰 길드원 목록</h1>
 
-      {/* 상단 컨트롤 영역 (모바일 대응을 위해 레이아웃 분리 조절) */}
-      <div className="actionRow">
-        <input
-          className="search"
-          placeholder="길드원 검색"
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
-        />
+      <input
+        className="search"
+        placeholder="검색"
+        value={search}
+        onChange={(e) => setSearch(e.target.value)}
+      />
 
-        {/* ➕ 버튼 */}
-        <button className="btn save mainBtn" onClick={() => setShowPwModal(true)}>
-          ➕ 길드원 추가
-        </button>
-      </div>
+      {/* ➕ 버튼 */}
+      <button className="btn save" onClick={() => setShowPwModal(true)}>
+        ➕ 길드원 추가
+      </button>
 
       {/* 🔐 비번 모달 */}
       {showPwModal && (
@@ -171,130 +165,117 @@ export default function Page() {
 
             <input
               className="input"
-              type="password"
               placeholder="비밀번호"
               value={pw}
               onChange={(e) => setPw(e.target.value)}
             />
 
-            <div className="modalBtns">
-              <button className="btn save" onClick={checkPassword}>
-                확인
-              </button>
-              <button
-                className="btn cancel"
-                onClick={() => setShowPwModal(false)}
-              >
-                취소
-              </button>
-            </div>
+            <button className="btn save" onClick={checkPassword}>
+              확인
+            </button>
+
+            <button
+              className="btn cancel"
+              onClick={() => setShowPwModal(false)}
+            >
+              취소
+            </button>
           </div>
         </div>
       )}
 
-      {/* 🎮 슬라이드 패널 (모바일 전면 레이어 스크롤 최적화) */}
+      {/* 🎮 슬라이드 패널 */}
       <div className={`panel ${showAddPanel ? "open" : ""}`}>
         <div className="panelHeader">
           <h2>➕ 길드원 추가</h2>
+
           <button
-            className="btn cancel closeBtn"
+            className="btn cancel"
             onClick={() => setShowAddPanel(false)}
           >
             ❌
           </button>
         </div>
 
-        <div className="panelBody">
-          <label>이름</label>
-          <input
-            className="input"
-            placeholder="이름"
-            value={addForm.name}
-            onChange={(e) =>
-              setAddForm({ ...addForm, name: e.target.value })
-            }
-          />
+        <input
+          className="input"
+          placeholder="이름"
+          value={addForm.name}
+          onChange={(e) =>
+            setAddForm({ ...addForm, name: e.target.value })
+          }
+        />
 
-          <label>직업</label>
-          <input
-            className="input"
-            placeholder="직업"
-            value={addForm.class}
-            onChange={(e) =>
-              setAddForm({ ...addForm, class: e.target.value })
-            }
-          />
+        <input
+          className="input"
+          placeholder="직업"
+          value={addForm.class}
+          onChange={(e) =>
+            setAddForm({ ...addForm, class: e.target.value })
+          }
+        />
 
-          <label>공격력</label>
-          <input
-            className="input"
-            type="number"
-            inputMode="numeric"
-            placeholder="공격력"
-            value={addForm.attack || ""}
-            onChange={(e) =>
-              setAddForm({
-                ...addForm,
-                attack: Number(e.target.value),
-              })
-            }
-          />
+        <input
+          className="input"
+          type="number"
+          placeholder="공격력"
+          value={addForm.attack}
+          onChange={(e) =>
+            setAddForm({
+              ...addForm,
+              attack: Number(e.target.value),
+            })
+          }
+        />
 
-          <label>방어력</label>
-          <input
-            className="input"
-            type="number"
-            inputMode="numeric"
-            placeholder="방어력"
-            value={addForm.defense || ""}
-            onChange={(e) =>
-              setAddForm({
-                ...addForm,
-                defense: Number(e.target.value),
-              })
-            }
-          />
+        <input
+          className="input"
+          type="number"
+          placeholder="방어력"
+          value={addForm.defense}
+          onChange={(e) =>
+            setAddForm({
+              ...addForm,
+              defense: Number(e.target.value),
+            })
+          }
+        />
 
-          <label>명중</label>
-          <input
-            className="input"
-            type="number"
-            inputMode="numeric"
-            placeholder="명중"
-            value={addForm.accuracy || ""}
-            onChange={(e) =>
-              setAddForm({
-                ...addForm,
-                accuracy: Number(e.target.value),
-              })
-            }
-          />
+        <input
+          className="input"
+          type="number"
+          placeholder="명중"
+          value={addForm.accuracy}
+          onChange={(e) =>
+            setAddForm({
+              ...addForm,
+              accuracy: Number(e.target.value),
+            })
+          }
+        />
 
-          <button className="btn save full submitBtn" onClick={addMember}>
-            저장하기
-          </button>
-        </div>
+        <button className="btn save full" onClick={addMember}>
+          저장
+        </button>
       </div>
 
       {/* 📋 리스트 */}
       <div className="grid">
         {filtered.map((m) => (
           <div key={m.id} className="card soft">
-            <div className="cardHeader">
-              <div className="avatar">🐰</div>
-              <div>
-                <div className="name">{m.name}</div>
-                <div className="job">🧙 {m.class}</div>
-              </div>
-            </div>
+            <div className="avatar">🐰</div>
+
+            <div className="name">{m.name}</div>
+
+            <div className="job">🧙 {m.class}</div>
 
             {editId === m.id ? (
               <div className="editBox">
-                <div className="editTitle">✏️ 정보 수정</div>
+                <div className="editTitle">✏️ 수정</div>
 
                 <div className="editGrid">
                   <div>
-                    <span className="label-text">🧙 직업</span>
+                    🧙 직업
                     <input
                       className="input"
                       value={editForm.class}
@@ -308,11 +289,10 @@ export default function Page() {
                   </div>
 
                   <div>
-                    <span className="label-text">⚔ 공격력</span>
+                    ⚔ 공격
                     <input
                       className="input"
                       type="number"
-                      inputMode="numeric"
                       value={editForm.attack}
                       onChange={(e) =>
                         setEditForm({
@@ -324,11 +304,10 @@ export default function Page() {
                   </div>
 
                   <div>
-                    <span className="label-text">🛡 방어력</span>
+                    🛡 방어
                     <input
                       className="input"
                       type="number"
-                      inputMode="numeric"
                       value={editForm.defense}
                       onChange={(e) =>
                         setEditForm({
@@ -340,11 +319,10 @@ export default function Page() {
                   </div>
 
                   <div>
-                    <span className="label-text">🎯 명중</span>
+                    🎯 명중
                     <input
                       className="input"
                       type="number"
-                      inputMode="numeric"
                       value={editForm.accuracy}
                       onChange={(e) =>
                         setEditForm({
@@ -356,72 +334,72 @@ export default function Page() {
                   </div>
                 </div>
 
-                <div style={{ marginTop: "10px" }}>
-                  <span className="label-text">📝 신화 / 메모</span>
-                  <input
-                    className="input"
-                    value={editForm.memo}
-                    onChange={(e) =>
-                      setEditForm({
-                        ...editForm,
-                        memo: e.target.value,
-                      })
-                    }
-                    placeholder="신화 3개 / 전설 2개"
-                  />
-                </div>
+                <div>
+  📝 신화 / 메모
+  <input
+    className="input"
+    value={editForm.memo}
+    onChange={(e) =>
+      setEditForm({
+        ...editForm,
+        memo: e.target.value,
+      })
+    }
+    placeholder="신화 3개 / 전설 2개"
+  />
+</div>
 
                 <div className="editBtns">
                   <button
-                    className="btn save action-inline-btn"
+                    className="btn save"
                     onClick={() => saveEdit(m.id)}
                   >
-                    💾 저장
+                    💾
                   </button>
 
                   <button
-                    className="btn cancel action-inline-btn"
+                    className="btn cancel"
                     onClick={() => setEditId(null)}
                   >
-                    ❌ 취소
+                    ❌
                   </button>
                 </div>
               </div>
             ) : (
               <>
-                <div className="infoContainer">
-                  <div className="info">
-                    <span>⚔ 공격력</span> <strong>{m.attack.toLocaleString()}</strong>
-                  </div>
+                <div className="info">
+                  ⚔ 공격력 <span>{m.attack.toLocaleString()}</span>
+                </div>
 
-                  <div className="info">
-                    <span>🛡 방어력</span> <strong>{m.defense.toLocaleString()}</strong>
-                  </div>
+                <div className="info">
+                  🛡 방어력 <span>{m.defense.toLocaleString()}</span>
+                </div>
 
-                  <div className="info">
-                    <span>🎯 명중</span> <strong>{m.accuracy.toLocaleString()}</strong>
-                  </div>
+                <div className="info">
+                  🎯 명중 <span>{m.accuracy.toLocaleString()}</span>
                 </div>
 
                 <div className="power">
                   ⭐ 전투력 {power(m)}
                 </div>
-                
-                <div className="memo">
-                  📝 {m.memo || "메모 없음"}
-                </div>
+<div className="memo">
+  📝 {m.memo || "메모 없음"}
+</div>
 
-                <div className="cardFooter">
-                  <div className="updated">
-                    수정일: {m.updated_at ? new Date(m.updated_at).toLocaleDateString("ko-KR") : "-"}
-                  </div>
-                  <button
-                    className="btn edit itemEditBtn"
-                    onClick={() => startEdit(m)}
-                  >
-                    ✏️ 수정하기
-                  </button>
-                </div>
+<div className="updated">
+  수정일 :
+  {m.updated_at
+    ? new Date(m.updated_at).toLocaleDateString("ko-KR")
+    : "-"}
+</div>
+
+
+                <button
+                  className="btn edit"
+                  onClick={() => startEdit(m)}
+                >
+                  ✏️
+                </button>
               </>
             )}
           </div>
@@ -432,51 +410,22 @@ export default function Page() {
       <style jsx>{`
         .bg {
           min-height: 100vh;
-          padding: 40px 24px;
+          padding: 35px;
           background: linear-gradient(180deg, #fff7fc, #f7f1ff);
-          box-sizing: border-box;
-        }
-
-        .header-top-area {
-          display: flex;
-          align-items: center;
-          margin-bottom: 20px;
         }
 
         .title {
-          font-size: 36px;
+          font-size: 48px;
           font-weight: 900;
           color: #ff72b8;
-          margin: 0;
-          white-space: nowrap; /* 💥 모바일에서 '목' '록'이 쪼개지지 않도록 방지 */
-        }
-
-        .actionRow {
-          display: flex;
-          gap: 12px;
-          align-items: center;
-          margin-bottom: 24px;
-          flex-wrap: wrap;
         }
 
         .search {
-          padding: 14px 20px;
-          flex: 1;
-          min-width: 260px;
+          padding: 16px;
+          width: 400px;
           border-radius: 999px;
-          border: 1px solid rgba(255, 114, 184, 0.15);
-          outline: none;
-          font-size: 15px;
-          box-shadow: 0 4px 12px rgba(255, 114, 184, 0.04);
-        }
-
-        .mainBtn {
-          margin: 0;
-          padding: 14px 24px;
-          font-weight: bold;
-          border-radius: 999px;
-          font-size: 15px;
-          white-space: nowrap;
+          border: none;
+          margin: 20px 0;
         }
 
         .grid {
@@ -486,219 +435,159 @@ export default function Page() {
         }
 
         .card {
-          padding: 24px;
+          padding: 20px;
           border-radius: 24px;
           background: white;
-          box-shadow: 0 10px 25px rgba(134, 114, 255, 0.05);
-          display: flex;
-          flex-direction: column;
+          box-shadow: 0 10px 25px rgba(0, 0, 0, 0.08);
         }
 
         .soft {
-          border: 1px solid #f2ecff;
-        }
-
-        .cardHeader {
-          display: flex;
-          align-items: center;
-          gap: 14px;
-          margin-bottom: 12px;
+          border: 1px solid #f0e6ff;
         }
 
         .avatar {
-          font-size: 36px;
+          font-size: 40px;
         }
 
         .name {
-          font-size: 20px;
+          font-size: 22px;
           font-weight: 900;
-          color: #222;
         }
 
         .job {
           display: inline-block;
-          padding: 4px 12px;
+          padding: 6px 14px;
           border-radius: 999px;
           background: #f3e9ff;
-          font-size: 13px;
-          font-weight: 700;
-          color: #7a46e6;
-          margin-top: 4px;
-        }
-
-        .infoContainer {
-          background: #fafaff;
-          padding: 12px 16px;
-          border-radius: 16px;
-          margin-top: 8px;
+          margin: 10px 0;
         }
 
         .info {
           display: flex;
           justify-content: space-between;
-          font-size: 14px;
-          color: #555;
-          margin: 6px 0;
-        }
-
-        .info strong {
-          color: #222;
+          margin-top: 6px;
         }
 
         .power {
-          margin-top: 14px;
+          margin-top: 12px;
           font-weight: 900;
-          font-size: 17px;
           color: #ff4e9f;
-        }
-
-        .memo {
-          margin-top: 10px;
-          font-size: 13px;
-          color: #666;
-          background: #f9f9fb;
-          padding: 10px 12px;
-          border-radius: 12px;
-          border: 1px solid #f1eff5;
-          line-height: 1.4;
-        }
-
-        .cardFooter {
-          display: flex;
-          justify-content: space-between;
-          align-items: center;
-          margin-top: 16px;
-          padding-top: 12px;
-          border-top: 1px solid #f8f6fa;
-        }
-
-        .itemEditBtn {
-          margin: 0;
-          padding: 6px 12px;
-          font-size: 13px;
-          font-weight: bold;
-        }
-
-        .updated {
-          font-size: 12px;
-          color: #aaa;
         }
 
         .input {
           width: 100%;
           box-sizing: border-box;
-          padding: 12px 14px;
-          margin-top: 6px;
-          border-radius: 12px;
-          border: 1px solid #e2d9f3;
+          padding: 10px 14px;
+          margin-top: 8px;
+          border-radius: 14px;
+          border: 1px solid #e8d9ff;
           outline: none;
-          font-size: 14px;
-          background: #fdfbfe;
-        }
-        .input:focus {
-          border-color: #ff8fc9;
         }
 
         .btn {
           border: none;
-          padding: 12px 16px;
-          border-radius: 12px;
+          padding: 10px 14px;
+          border-radius: 14px;
+          margin-top: 10px;
           cursor: pointer;
-          font-weight: 600;
-          font-size: 14px;
-          transition: background 0.2s;
+          margin-right: 8px;
         }
 
-        .save { background: #ff8fc9; color: white; }
-        .save:hover { background: #ff72b8; }
-        .cancel { background: #eee; color: #555; }
-        .cancel:hover { background: #e0e0e0; }
-        .edit { background: #8672ff; color: white; }
-        .edit:hover { background: #6c54ff; }
+        .save {
+          background: #ff8fc9;
+          color: white;
+        }
+
+        .cancel {
+          background: #ddd;
+        }
+
+        .edit {
+          background: #8672ff;
+          color: white;
+        }
 
         .modal {
           position: fixed;
           inset: 0;
-          background: rgba(0, 0, 0, 0.5);
+          background: rgba(0, 0, 0, 0.4);
           display: flex;
           justify-content: center;
           align-items: center;
-          padding: 20px;
-          z-index: 100;
         }
 
         .modalCard {
           background: white;
-          padding: 24px;
-          border-radius: 24px;
-          width: 100%;
-          max-width: 340px;
-          box-shadow: 0 20px 40px rgba(0,0,0,0.2);
+          padding: 20px;
+          border-radius: 20px;
+          width: 320px;
         }
-        .modalCard h2 { font-size: 20px; margin: 0 0 16px 0; color: #222; }
-        .modalBtns { display: flex; gap: 8px; margin-top: 16px; }
-        .modalBtns .btn { flex: 1; margin: 0; }
 
+        /* 🎮 슬라이드 패널 */
         .panel {
           position: fixed;
           top: 0;
-          right: -440px;
-          width: 400px;
+          right: -420px;
+          width: 380px;
           height: 100vh;
           background: white;
-          box-shadow: -10px 0 35px rgba(0, 0, 0, 0.12);
-          padding: 24px;
-          box-sizing: border-box;
-          transition: right 0.35s cubic-bezier(0.25, 0.8, 0.25, 1);
-          z-index: 200;
-          display: flex;
-          flex-direction: column;
+          box-shadow: -10px 0 30px rgba(0, 0, 0, 0.15);
+          padding: 20px;
+          transition: 0.35s ease;
+          z-index: 50;
         }
 
-        .panel.open { right: 0; }
-        .panelHeader { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; }
-        .panelHeader h2 { margin: 0; font-size: 22px; color: #222; }
-        .panelBody { flex: 1; overflow-y: auto; padding-bottom: 40px; }
-        .panelBody label { display: block; font-size: 13px; font-weight: 700; color: #666; margin-top: 14px; }
-        .closeBtn { margin: 0; background: none; font-size: 18px; padding: 4px; }
-        .submitBtn { margin-top: 24px; padding: 14px; font-size: 16px; font-weight: bold; }
-        .full { width: 100%; }
+        .panel.open {
+          right: 0;
+        }
+
+        .panelHeader {
+          display: flex;
+          justify-content: space-between;
+          align-items: center;
+        }
+
+        .full {
+          width: 100%;
+        }
 
         .editBox {
-          margin-top: 14px;
-          padding: 16px;
-          border-radius: 16px;
-          background: #fbf9ff;
-          border: 1px solid #ede8f5;
+          margin-top: 10px;
+          padding: 14px;
+          border-radius: 20px;
+          background: linear-gradient(135deg, #fff5fb, #f3efff);
         }
-        .editTitle { font-weight: 900; font-size: 15px; color: #555; margin-bottom: 12px; }
-        .editGrid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px; }
-        .label-text { font-size: 12px; font-weight: bold; color: #777; }
-        .editBtns { display: flex; gap: 8px; margin-top: 14px; }
-        .action-inline-btn { flex: 1; margin: 0; padding: 10px; font-size: 13px; }
 
-        @media (max-width: 500px) {
-          .bg { padding: 24px 16px; }
-          .header-top-area { justify-content: center; } /* 모바일 타이틀 중앙정렬 */
-          .title { font-size: 26px; text-align: center; }
-          .actionRow { flex-direction: column; gap: 8px; }
-          .search { width: 100%; min-width: 100%; text-align: center; padding: 12px; }
-          .mainBtn { width: 100%; border-radius: 12px; padding: 12px; }
-          
-          .grid { grid-template-columns: 1fr; gap: 14px; }
-          .card { padding: 18px; border-radius: 20px; }
-          .name { font-size: 18px; }
-          .power { font-size: 16px; }
-          
-          .panel {
-            right: -100%;
-            width: 100%;
-            height: 100vh;
-          }
-          .panel.open { right: 0; }
-          
-          .editGrid { grid-template-columns: 1fr; gap: 8px; }
+        .editTitle {
+          font-weight: 900;
+          margin-bottom: 10px;
         }
+
+        .editGrid {
+          display: grid;
+          grid-template-columns: 1fr;
+          gap: 12px;
+        }
+
+        .editBtns {
+          display: flex;
+          gap: 10px;
+          margin-top: 10px;
+        }
+          .memo {
+  margin-top: 8px;
+  font-size: 14px;
+  color: #555;
+  background: #f8f8f8;
+  padding: 8px;
+  border-radius: 10px;
+}
+
+.updated {
+  margin-top: 6px;
+  font-size: 12px;
+  color: #999;
+}
       `}</style>
     </div>
   );
