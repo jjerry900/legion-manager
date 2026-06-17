@@ -6,7 +6,7 @@ import { supabase } from "@/lib/supabase";
 type Member = {
   id: string;
   name: string;
-  attack: number; // ⭐ score 대신 attack 컬럼 매핑
+  attack: number; // ⭐ 이제 이 값은 순수 캐릭터 스펙 공격력으로 고정됩니다. 절대 안 바뀜!
 };
 
 type Boss = {
@@ -102,6 +102,7 @@ export default function Page() {
     load();
   }
 
+  // ⭐ 보스 삭제 시 멤버 스펙(attack)은 건드리지 않고 오직 출석부와 보스 데이터만 삭제
   async function deleteBoss(e: React.MouseEvent, bossId: string) {
     e.stopPropagation();
     const pwCheck = prompt("관리자 비밀번호를 입력하세요.");
@@ -113,7 +114,6 @@ export default function Page() {
     load();
   }
 
-  // ⭐ 모달 오픈 시 빈 격차 없이 공백 트림(trim) 후 확실한 매핑
   function openBoss(b: Boss) {
     if (members.length === 0) return alert("명단을 불러오는 중입니다.");
     
@@ -132,7 +132,7 @@ export default function Page() {
     setOpen(true);
   }
 
-  // ⭐ 체크 유저 대상 1인당 보스 점수 통째로 지급 처리
+  // ⭐ 핵심 수정: members 테이블은 아예 업데이트하지 않고, 오직 attendance(출석부) 점수만 기록!
   async function save() {
     if (!selectedBoss) return;
     if (pw !== "1234") return alert("비밀번호가 일치하지 않습니다.");
@@ -143,22 +143,29 @@ export default function Page() {
         boss_id: selectedBoss.id,
         user_name: m.name,
         checked: isChecked,
-        earned_score: isChecked ? selectedBoss.boss_score : 0, // ⭐ N빵 분할 연산 제거!
+        earned_score: isChecked ? selectedBoss.boss_score : 0,
       };
     });
 
-    // 기존 데이터 갱신
+    // 기존 해당 보스의 출석 기록만 완전히 밀어버리고 새 출석 데이터만 저장 (멤버 스펙 보호)
     await supabase.from("attendance").delete().eq("boss_id", selectedBoss.id);
     const { error } = await supabase.from("attendance").insert(rows);
 
     if (error) {
-      alert("저장 실패: " + error.message);
+      alert("출석부 저장 실패: " + error.message);
     } else {
       setPw("");
       setOpen(false);
       await load(); 
     }
   }
+
+  // ⭐ 특정 유저가 출석부(attendance)를 통해 획득한 순수 '보스 누적 점수'만 계산하는 함수
+  const getMemberTotalEarnedScore = (memberName: string) => {
+    return att
+      .filter((a) => a.user_name === memberName && a.checked)
+      .reduce((sum, current) => sum + (current.earned_score ?? 0), 0);
+  };
 
   const filteredBosses = bosses.filter((b) => {
     const matchDate = !searchDate || b.date === searchDate;
@@ -274,7 +281,10 @@ export default function Page() {
                   >
                     <div className="member-meta">
                       <span className="m-name">{m.name}</span>
-                      <span className="m-total-score">현재 누적(공격): {m.attack ?? 0}점</span>
+                      {/* ⭐ UI 변경: 캐릭 순수 스펙 공격력과 보스 정산 누적 점수를 완벽히 분리해서 노출 */}
+                      <span className="m-total-score">
+                        ⚔️ 캐릭터 공격력: {m.attack ?? 0} | 💎 보스 누적 점수: {getMemberTotalEarnedScore(m.name)}점
+                      </span>
                     </div>
                     <input 
                       type="checkbox" 
