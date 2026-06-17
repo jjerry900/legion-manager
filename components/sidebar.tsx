@@ -14,30 +14,29 @@ export default function Sidebar() {
     { href: "/bosses", icon: "⚔️", label: "보스 참여 기록" },
     { href: "/distribute", icon: "💎", label: "분배금 내역" },
     { href: "/attendance", icon: "📅", label: "참여율 기록" },
+    { href: "/ladder", icon: "🎲", label: "사다리 게임" },
   ];
 
-  // ✅ 모바일 사이드바 열릴 때 스크롤 막기 (핵심 UX 수정)
   useEffect(() => {
-    if (isOpen) {
-      document.body.style.overflow = "hidden";
-    } else {
-      document.body.style.overflow = "auto";
-    }
+    document.body.style.overflow = isOpen ? "hidden" : "auto";
   }, [isOpen]);
+
+  const isActive = (href: string) => {
+    return pathname === href || pathname.startsWith(href + "/");
+  };
 
   return (
     <>
-      {/* ✅ 햄버거 버튼 (모바일에서만 보이게 CSS 처리 필요) */}
+      {/* 햄버거 */}
       <button className="hamburger" onClick={() => setIsOpen(true)}>
         ☰
       </button>
 
-      {/* ✅ 오버레이 (이거 없으면 모바일 UX 깨짐) */}
+      {/* overlay */}
       {isOpen && (
         <div className="overlay" onClick={() => setIsOpen(false)} />
       )}
 
-      {/* 사이드바 */}
       <aside className={`sidebar ${isOpen ? "open" : ""}`}>
         <button className="closeBtn" onClick={() => setIsOpen(false)}>
           ❌
@@ -45,7 +44,7 @@ export default function Sidebar() {
 
         <div className="logo">
           <h1>레이븐2</h1>
-          <p>일본섭 수삼사단 관리</p>
+          <p>길드 관리 시스템</p>
         </div>
 
         <div className="castle">🏰</div>
@@ -56,9 +55,7 @@ export default function Sidebar() {
               key={menu.href}
               href={menu.href}
               onClick={() => setIsOpen(false)}
-              className={
-                pathname === menu.href ? "menu active" : "menu"
-              }
+              className={`menu ${isActive(menu.href) ? "active" : ""}`}
             >
               <span>{menu.icon}</span>
               {menu.label}
@@ -66,6 +63,29 @@ export default function Sidebar() {
           ))}
         </nav>
       </aside>
+
+      <style jsx>{`
+        .overlay {
+          position: fixed;
+          inset: 0;
+          background: rgba(0, 0, 0, 0.4);
+          z-index: 2000;
+        }
+
+        .sidebar {
+          transition: transform 0.25s ease;
+        }
+
+        @media (max-width: 768px) {
+          .sidebar {
+            transform: translateX(-100%);
+          }
+
+          .sidebar.open {
+            transform: translateX(0);
+          }
+        }
+      `}</style>
     </>
   );
 }
