@@ -6,7 +6,7 @@ import { supabase } from "@/lib/supabase";
 type Member = {
   id: string;
   name: string;
-  attack: number; // ⭐ 이제 이 값은 순수 캐릭터 스펙 공격력으로 고정됩니다. 절대 안 바뀜!
+  attack: number;
 };
 
 type Boss = {
@@ -42,27 +42,36 @@ export default function Page() {
   // 모달 및 관리 상태
   const [selectedBoss, setSelectedBoss] = useState<Boss | null>(null);
   const [open, setOpen] = useState(false);
-  const [temp, setTemp] = useState<Record<string, boolean>>({});
+  const [checkedNames, setCheckedNames] = useState<string[]>([]);
   const [pw, setPw] = useState("");
+  const [saveLoading, setSaveLoading] = useState(false);
 
   // 필터링 상태
   const [searchDate, setSearchDate] = useState("");
   const [viewTab, setViewTab] = useState<0 | 1 | 2>(0);
 
+  // ✅ [수정] 최신 데이터를 명시적으로 받아와서 동기화 지연을 방지하는 구조로 변경
   async function load() {
     setLoading(true);
     try {
       const [m, b, a] = await Promise.all([
         supabase.from("members").select("*").range(0, 999).order("name", { ascending: true }),
         supabase.from("bosses").select("*").range(0, 999).order("date", { ascending: false }),
-        supabase.from("attendance").select("*").range(0, 9999),
+        supabase.from("attendance").select("*").range(0, 49999)
       ]);
 
-      setMembers(m.data ?? []);
-      setBosses(b.data ?? []);
-      setAtt(a.data ?? []);
+      const updatedMembers = m.data ?? [];
+      const updatedBosses = b.data ?? [];
+      const updatedAtt = a.data ?? [];
+
+      setMembers(updatedMembers);
+      setBosses(updatedBosses);
+      setAtt(updatedAtt);
+
+      return { updatedAtt };
     } catch (err) {
       console.error("데이터 로드 실패:", err);
+      return { updatedAtt: [] };
     } finally {
       setLoading(false);
     }
@@ -86,7 +95,7 @@ export default function Page() {
 
     const { error } = await supabase.from("bosses").insert([
       {
-        name: bossName,
+        name: bossName.trim(),
         date: selectedDate,
         day: selectedDay,
         week: bossWeek,
@@ -99,10 +108,10 @@ export default function Page() {
     setBossName("");
     setBossScore(0);
     setSelectedDate("");
-    load();
+    
+    await load();
   }
 
-  // ⭐ 보스 삭제 시 멤버 스펙(attack)은 건드리지 않고 오직 출석부와 보스 데이터만 삭제
   async function deleteBoss(e: React.MouseEvent, bossId: string) {
     e.stopPropagation();
     const pwCheck = prompt("관리자 비밀번호를 입력하세요.");
@@ -111,59 +120,97 @@ export default function Page() {
 
     await supabase.from("attendance").delete().eq("boss_id", bossId);
     await supabase.from("bosses").delete().eq("id", bossId);
-    load();
+    await load();
   }
 
-  function openBoss(b: Boss) {
-    if (members.length === 0) return alert("명단을 불러오는 중입니다.");
+  // 모달 열 때 실시간 동기화
+  async function openBoss(b: Boss) {
+    if (members.length === 0) return alert("명단을 불러오는 중입니다. 잠시 후 다시 시도해 주세요.");
+    if (!b.id) return alert("올바르지 않은 보스 데이터입니다.");
     
-    setSelectedBoss(b);
-    const initial: Record<string, boolean> = {};
-    
-    members.forEach((m) => {
-      const found = att.find(
-        (a) => a.boss_id === b.id && String(a.user_name).trim() === String(m.name).trim() && a.checked
-      );
-      initial[m.name] = !!found;
-    });
-    
-    setTemp(initial);
-    setPw("");
-    setOpen(true);
-  }
+    setLoading(true);
+    try {
+      const { data: realTimeAtt, error } = await supabase
+        .from("attendance")
+        .select("user_name, checked")
+        .eq("boss_id", b.id);
 
-  // ⭐ 핵심 수정: members 테이블은 아예 업데이트하지 않고, 오직 attendance(출석부) 점수만 기록!
-  async function save() {
-    if (!selectedBoss) return;
-    if (pw !== "1234") return alert("비밀번호가 일치하지 않습니다.");
+      if (error) throw error;
 
-    const rows = members.map((m) => {
-      const isChecked = !!temp[m.name];
-      return {
-        boss_id: selectedBoss.id,
-        user_name: m.name,
-        checked: isChecked,
-        earned_score: isChecked ? selectedBoss.boss_score : 0,
-      };
-    });
-
-    // 기존 해당 보스의 출석 기록만 완전히 밀어버리고 새 출석 데이터만 저장 (멤버 스펙 보호)
-    await supabase.from("attendance").delete().eq("boss_id", selectedBoss.id);
-    const { error } = await supabase.from("attendance").insert(rows);
-
-    if (error) {
-      alert("출석부 저장 실패: " + error.message);
-    } else {
+      const activeChecked = (realTimeAtt ?? [])
+        .filter((a) => a.checked === true)
+        .map((a) => String(a.user_name).trim());
+      
+      const matchedNames = members
+        .filter((m) => activeChecked.some((name) => name.toLowerCase() === String(m.name).trim().toLowerCase()))
+        .map((m) => String(m.name).trim());
+      
+      setSelectedBoss(b);
+      setCheckedNames(matchedNames);
       setPw("");
-      setOpen(false);
-      await load(); 
+      setOpen(true);
+    } catch (err) {
+      console.error(err);
+      alert("기존 정산 데이터를 불러오지 못했습니다. 다시 시도해 주세요.");
+    } finally {
+      setLoading(false);
     }
   }
 
-  // ⭐ 특정 유저가 출석부(attendance)를 통해 획득한 순수 '보스 누적 점수'만 계산하는 함수
+  // 토글 처리
+  function handleToggleMember(memberName: string) {
+    const targetName = memberName.trim();
+    setCheckedNames((prev) => {
+      const isExist = prev.some((n) => n.toLowerCase() === targetName.toLowerCase());
+      if (isExist) {
+        return prev.filter((n) => n.toLowerCase() !== targetName.toLowerCase());
+      } else {
+        return [...prev, targetName];
+      }
+    });
+  }
+
+  // 저장 처리 (저장 완료 후 점수 즉시 동기화 강제 적용)
+  async function save() {
+    if (!selectedBoss || !selectedBoss.id) return alert("정산할 보스가 선택되지 않았습니다.");
+    if (pw !== "1234") return alert("비밀번호가 일치하지 않습니다.");
+    if (saveLoading) return;
+
+    setSaveLoading(true);
+    try {
+      const rows = checkedNames.map((name) => ({
+        boss_id: selectedBoss.id,
+        user_name: name.trim(),
+        checked: true,
+        earned_score: selectedBoss.boss_score,
+      }));
+
+      const { error } = await supabase.rpc("save_attendance_v2", {
+        target_boss_id: selectedBoss.id,
+        rows_to_insert: rows,
+      });
+
+      if (error) throw error;
+
+      setPw("");
+      setOpen(false);
+      
+      // ✅ [중요] load 함수가 완전히 끝날 때까지 동기적으로 기다려 점수를 완벽 매칭
+      await load();
+      alert("출석 정산 및 누적 점수 동기화가 안전하게 완료되었습니다.");
+    } catch (err: any) {
+      console.error(err);
+      alert("저장 중 오류가 발생했습니다: " + (err.message || err));
+    } finally {
+      setSaveLoading(false);
+    }
+  }
+
+  // ✅ [수정] 대소문자 및 공백 처리 강화하여 정확한 점수 매칭 계산
   const getMemberTotalEarnedScore = (memberName: string) => {
+    const trimmedName = String(memberName).trim().toLowerCase();
     return att
-      .filter((a) => a.user_name === memberName && a.checked)
+      .filter((a) => String(a.user_name).trim().toLowerCase() === trimmedName && a.checked === true)
       .reduce((sum, current) => sum + (current.earned_score ?? 0), 0);
   };
 
@@ -172,8 +219,6 @@ export default function Page() {
     const matchWeek = viewTab === 0 || b.week === viewTab;
     return matchDate && matchWeek;
   });
-
-  const currentCheckedCount = Object.values(temp).filter(Boolean).length;
 
   return (
     <div className="wrap">
@@ -225,13 +270,13 @@ export default function Page() {
 
       {/* 보스 카드 목록 */}
       <div className="bossList">
-        {loading ? (
+        {loading && !open ? (
           <div className="empty-state">🔄 데이터를 불러오는 중입니다...</div>
         ) : filteredBosses.length === 0 ? (
           <div className="empty-state">조회된 토벌 내역이 없습니다.</div>
         ) : (
           filteredBosses.map((b) => (
-            <div key={b.id} className="bossCard" onClick={() => openBoss(b)}>
+            <div key={b.id || b.name} className="bossCard" onClick={() => openBoss(b)}>
               <div className="boss-info">
                 <div className="bossName">
                   <span className="week-tag">{b.week}주차</span> {b.name}
@@ -251,7 +296,7 @@ export default function Page() {
           <div className="modal" onClick={(e) => e.stopPropagation()}>
             
             <div className="modalHeader">
-              <h2>⚔️ [{selectedBoss.week}주차] {selectedBoss.name} 정산</h2>
+              <h2>⚔️ [{selectedBoss.week}주차] {selectedBoss.name} 정산 수정</h2>
               <button type="button" className="closeBtn" onClick={() => setOpen(false)}>✕ 닫기</button>
             </div>
 
@@ -262,7 +307,7 @@ export default function Page() {
               </div>
               <div className="summary-box pink-bg">
                 <span className="s-label">체크된 인원</span>
-                <span className="s-value">{currentCheckedCount} 명</span>
+                <span className="s-value">{checkedNames.length} 명</span>
               </div>
               <div className="summary-box purple-bg">
                 <span className="s-label">1인당 지급 점수</span>
@@ -273,27 +318,31 @@ export default function Page() {
             {/* 유저 명단 영역 */}
             <div className="memberList-scroll">
               <div className="memberList">
-                {members.map((m) => (
-                  <div 
-                    key={m.id} 
-                    className={`memberRow ${temp[m.name] ? "checked-row" : ""}`}
-                    onClick={() => setTemp((p) => ({ ...p, [m.name]: !p[m.name] }))}
-                  >
-                    <div className="member-meta">
-                      <span className="m-name">{m.name}</span>
-                      {/* ⭐ UI 변경: 캐릭 순수 스펙 공격력과 보스 정산 누적 점수를 완벽히 분리해서 노출 */}
-                      <span className="m-total-score">
-                        ⚔️ 캐릭터 공격력: {m.attack ?? 0} | 💎 보스 누적 점수: {getMemberTotalEarnedScore(m.name)}점
-                      </span>
+                {members.map((m) => {
+                  const currentName = String(m.name).trim();
+                  const isChecked = checkedNames.some((n) => n.toLowerCase() === currentName.toLowerCase());
+
+                  return (
+                    <div 
+                      key={m.id} 
+                      className={`memberRow ${isChecked ? "checked-row" : ""}`}
+                      onClick={() => handleToggleMember(currentName)}
+                    >
+                      <div className="member-meta">
+                        <span className="m-name">{m.name}</span>
+                        <span className="m-total-score">
+                          ⚔️ 캐릭터 공격력: {m.attack ?? 0} | 💎 보스 누적 점수: {getMemberTotalEarnedScore(currentName)}점
+                        </span>
+                      </div>
+                      <input 
+                        type="checkbox" 
+                        checked={isChecked} 
+                        readOnly
+                        className="modal-check" 
+                      />
                     </div>
-                    <input 
-                      type="checkbox" 
-                      checked={!!temp[m.name]} 
-                      onChange={() => {}} 
-                      className="modal-check" 
-                    />
-                  </div>
-                ))}
+                  );
+                })}
               </div>
             </div>
 
@@ -301,7 +350,9 @@ export default function Page() {
               <input type="password" placeholder="🔒 관리자 비밀번호 (1234)" value={pw} onChange={(e) => setPw(e.target.value)} />
             </div>
 
-            <button className="save" onClick={save}>🌸 정산 및 출석부 저장</button>
+            <button className="save" onClick={save} disabled={saveLoading}>
+              {saveLoading ? "⏳ 서버에 안전하게 저장 중..." : "🌸 정산 수정 완료 및 닫기"}
+            </button>
           </div>
         </div>
       )}
@@ -322,6 +373,7 @@ export default function Page() {
         input:focus { border-color: #ff6fae; }
         button { padding: 14px; border: none; border-radius: 14px; cursor: pointer; background: #ff6fae; color: white; font-weight: 700; font-size: 15px; transition: all 0.2s; }
         button:hover { background: #f05697; }
+        button:disabled { background: #b09aa4; cursor: not-allowed; }
         .divider { border: 0; height: 1px; background: #fff0f5; margin: 8px 0; }
         .gray { background: #f5edf0; color: #7a6970; min-width: 90px; }
         .filter { display: flex; gap: 10px; }

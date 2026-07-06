@@ -4,7 +4,7 @@ import { useEffect, useMemo, useState, useCallback } from "react";
 import { supabase } from "@/lib/supabase";
 
 type Member = { id: string; name: string; };
-type Boss = { id: string; name: string; week: number; };
+type Boss = { id: string; name: string; week: number; boss_score: number; };
 type Attendance = { id: string; boss_id: string; user_name: string; checked: boolean; };
 type DistributionRecord = { user_name: string; extra_reward: number; paid: boolean; };
 
@@ -24,26 +24,48 @@ export default function DistributionPage() {
   const [isLoading, setIsLoading] = useState(true);
 
   // ==========================================
-  // [순서 변경] 데이터 연산 로직 (Memoization)을 함수 위로 이동
+  // [버그 완벽 박멸] 실제 출석 기준 데이터 연산 로직
   // ==========================================
-  const weekBossIds = useMemo(() => {
-    if (week === 1) {
-      return bosses.filter((b) => b.week === 1).map((b) => b.id);
-    }
-    return bosses.filter((b) => b.week === 1 || b.week === 2).map((b) => b.id);
+  
+  // 1. 이번 주차(week)에 해당하는 보스들 1차 필터링
+  const weekBossesFiltered = useMemo(() => {
+    return bosses.filter((b) => Number(b.week) === Number(week));
   }, [bosses, week]);
 
-  const stats = useMemo(() => {
-    const totalBosses = weekBossIds.length || 1;
-    return members.map((member) => {
-      const attended = new Set(
-        attendance
-          .filter((a) => a.user_name === member.name && a.checked && weekBossIds.includes(a.boss_id))
-          .map((a) => a.boss_id)
-      );
-      return { ...member, rate: attended.size / totalBosses };
+  // 2. 1차 필터링된 보스 중, '실제 유저들의 출석 체크 기록이 존재하는 보스'만 최종 엄선
+  // (이를 통해 DB에 주차가 잘못 꼬여 들어간 유령 보스 점수 38점을 원천 배제합니다)
+  const actualActiveBosses = useMemo(() => {
+    return weekBossesFiltered.filter((boss) => {
+      return attendance.some((a) => String(a.boss_id) === String(boss.id) && a.checked);
     });
-  }, [members, attendance, weekBossIds]);
+  }, [weekBossesFiltered, attendance]);
+
+  // 3. 진짜 활성화된 보스들의 점수만 합산 (여기서 정확히 사장님이 원하시는 67점이 나오게 됩니다)
+  const totalBossScore = useMemo(() => {
+    const score = actualActiveBosses.reduce((sum, b) => sum + Number(b.boss_score ?? 0), 0);
+    console.log(`[필터링 완료] 현재 ${week}주차 실제 만점 기준 점수:`, score); 
+    return score;
+  }, [actualActiveBosses, week]);
+
+  // 4. 점수 기준 참여율(rate) 계산
+  const stats = useMemo(() => {
+    return members.map((member) => {
+      if (totalBossScore === 0) return { ...member, rate: 0 };
+
+      // 엄선된 진짜 보스 중 해당 유저가 출석 체크한 보스의 점수만 합산
+      const myEarnedScore = actualActiveBosses.reduce((sum, boss) => {
+        const isAttended = attendance.some((a) => {
+          const matchName = String(a.user_name).trim().toLowerCase() === String(member.name).trim().toLowerCase();
+          return matchName && String(a.boss_id) === String(boss.id) && a.checked;
+        });
+
+        return isAttended ? sum + Number(boss.boss_score ?? 0) : sum;
+      }, 0);
+      
+      // 만점(67점) 중 내 점수(67점)를 계산하여 정확히 100% 출력
+      return { ...member, rate: myEarnedScore / totalBossScore };
+    });
+  }, [members, attendance, actualActiveBosses, totalBossScore]);
 
   const totalRate = useMemo(() => stats.reduce((sum, m) => sum + m.rate, 0), [stats]);
 
@@ -71,7 +93,6 @@ export default function DistributionPage() {
   // 데이터 핸들링 및 API 통신 함수 기능들
   // ==========================================
   
-  // 1. 데이터 로드 (useCallback으로 안정성 확보)
   const loadData = useCallback(async () => {
     setIsLoading(true);
     try {
@@ -83,9 +104,12 @@ export default function DistributionPage() {
         supabase.from("distribution_records").select("*").eq("week", week),
       ]);
 
+      const activeBossIds = (b.data ?? []).map(boss => boss.id);
+      const cleanAttendance = (a.data ?? []).filter(att => activeBossIds.includes(att.boss_id));
+
       setMembers(m.data ?? []);
       setBosses(b.data ?? []);
-      setAttendance(a.data ?? []);
+      setAttendance(cleanAttendance);
 
       if (settingsRes.data) {
         setTotalDiamond(settingsRes.data.total_diamond ?? 0);
@@ -118,15 +142,10 @@ export default function DistributionPage() {
     loadData();
   }, [loadData]);
 
-  // 2. 상단 마스터 설정 저장 (포커스가 나가거나 엔터 칠 때만 단발성 호출되도록 분리)
   async function saveSettings(currentDiamond: number, currentPercent: number) {
     try {
       await supabase.from("distribute_settings").upsert(
-        {
-          week,
-          total_diamond: currentDiamond,
-          distribute_percent: currentPercent,
-        },
+        { week, total_diamond: currentDiamond, distribute_percent: currentPercent },
         { onConflict: "week" }
       );
     } catch (error) {
@@ -134,20 +153,13 @@ export default function DistributionPage() {
     }
   }
 
-  // 3. 개별 멤버 상태 자동 저장 (이제 선언 순서가 아래에 있으므로 result 참조가 안전함)
   async function saveMember(userName: string, currentExtra: number, currentPaid: boolean) {
     const row = result.find((r) => r.name === userName);
     if (!row) return;
 
     try {
       await supabase.from("distribution_records").upsert(
-        {
-          week,
-          user_name: userName,
-          reward: row.reward,
-          extra_reward: currentExtra,
-          paid: currentPaid,
-        },
+        { week, user_name: userName, reward: row.reward, extra_reward: currentExtra, paid: currentPaid },
         { onConflict: "week,user_name" }
       );
     } catch (error) {
@@ -155,19 +167,13 @@ export default function DistributionPage() {
     }
   }
 
-  // 4. 초기화 함수
   async function handleReset() {
     if (!confirm(`${week}주차의 모든 분배금 설정 및 지급 내역을 완전히 삭제하시겠습니까?`)) {
       return;
     }
 
     try {
-      await supabase.from("distribute_settings").upsert({
-        week,
-        total_diamond: 0,
-        distribute_percent: 70,
-      });
-
+      await supabase.from("distribute_settings").upsert({ week, total_diamond: 0, distribute_percent: 70 });
       await supabase.from("distribution_records").delete().eq("week", week);
 
       setTotalDiamond(0);
@@ -189,10 +195,8 @@ export default function DistributionPage() {
   return (
     <div className="wrap">
       <div className="header-area">
-        <h2>💖 분배금 정산 내역</h2>
-        <button className="reset-btn" onClick={handleReset}>
-          🔄 데이터 초기화
-        </button>
+        <h2>💖 분배금 정산 내역 (보스 실점수 동기화 완료)</h2>
+        <button className="reset-btn" onClick={handleReset}>🔄 데이터 초기화</button>
       </div>
 
       <div className="tabs">
@@ -221,6 +225,7 @@ export default function DistributionPage() {
         
         <div className="card-item">
           <div className="label">분배 대상 금액</div>
+          <br />
           <b className="pink-text">{Math.floor(distributableAmount).toLocaleString()} 💎</b>
         </div>
 
@@ -246,11 +251,13 @@ export default function DistributionPage() {
 
         <div className="card-item">
           <div className="label">총 지급액</div>
+          <br />
           <b>{totalPaid.toLocaleString()} 💎</b>
         </div>
 
         <div className="card-item">
           <div className="label" style={{ color: remain < 0 ? "#f43f5e" : "inherit" }}>남은 금액</div>
+          <br />
           <b style={{ color: remain < 0 ? "#f43f5e" : "#ff6fae" }}>{remain.toLocaleString()} 💎</b>
         </div>
       </div>

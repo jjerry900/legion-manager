@@ -1,309 +1,171 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, useCallback } from "react";
 import { supabase } from "@/lib/supabase";
 
-type Member = { id: string; name: string };
-type Boss = { id: string; name: string; week: number };
-type Attendance = { id: string; boss_id: string; user_name: string; checked: boolean };
+type Member = { id: string; name: string; };
+type Boss = { id: string; name: string; week: number; boss_score: number; };
+type Attendance = { id: string; boss_id: string; user_name: string; checked: boolean; };
 
-export default function Page() {
+export default function AttendanceRatePage() {
   const [members, setMembers] = useState<Member[]>([]);
   const [bosses, setBosses] = useState<Boss[]>([]);
-  const [att, setAtt] = useState<Attendance[]>([]);
-  const [tab, setTab] = useState<1 | 2>(1);
+  const [attendance, setAttendance] = useState<Attendance[]>([]);
+  const [week, setWeek] = useState<1 | 2>(1);
+  const [isLoading, setIsLoading] = useState(true);
 
-  async function load() {
-    const [m, b, a] = await Promise.all([
-      supabase.from("members").select("*"),
-      supabase.from("bosses").select("*"),
-      supabase.from("attendance").select("*"),
-    ]);
+  // ==========================================
+  // [정밀 동기화] 참여율 연산 로직
+  // ==========================================
+  
+  // 1. 현재 주차(week)에 해당하는 보스들 필터링
+  const weekBosses = useMemo(() => {
+    return bosses.filter((b) => Number(b.week) === Number(week));
+  }, [bosses, week]);
 
-    setMembers(m.data ?? []);
-    setBosses(b.data ?? []);
-    setAtt(a.data ?? []);
-  }
+  // 2. 이 중 유저들의 출석 체크 기록이 1개라도 존재하는 '실제 활성 보스'만 엄선 (분모 오류 원천 차단)
+  const actualActiveBosses = useMemo(() => {
+    return weekBosses.filter((boss) => {
+      return attendance.some((a) => String(a.boss_id) === String(boss.id) && a.checked);
+    });
+  }, [weekBosses, attendance]);
 
-  useEffect(() => {
-    load();
+  // 3. 진짜 활성화된 이번 주차 보스들의 만점 기준 계산 (예: 67점)
+  const totalBossScore = useMemo(() => {
+    return actualActiveBosses.reduce((sum, b) => sum + Number(b.boss_score ?? 0), 0);
+  }, [actualActiveBosses]);
+
+  // 4. 최종 멤버별 획득 점수 및 참여율 계산
+  const memberStats = useMemo(() => {
+    return members.map((member) => {
+      if (totalBossScore === 0) return { ...member, earnedScore: 0, rate: 0 };
+
+      // 해당 유저가 체크된 보스의 점수만 합산
+      const myEarnedScore = actualActiveBosses.reduce((sum, boss) => {
+        const isAttended = attendance.some((a) => {
+          const matchName = String(a.user_name).trim().toLowerCase() === String(member.name).trim().toLowerCase();
+          return matchName && String(a.boss_id) === String(boss.id) && a.checked;
+        });
+        return isAttended ? sum + Number(boss.boss_score ?? 0) : sum;
+      }, 0);
+
+      return {
+        ...member,
+        earnedScore: myEarnedScore,
+        rate: myEarnedScore / totalBossScore,
+      };
+    }).sort((a, b) => b.rate - a.rate); // 참여율 높은 순 정렬
+  }, [members, attendance, actualActiveBosses, totalBossScore]);
+
+  // ==========================================
+  // 데이터 로드
+  // ==========================================
+  const loadData = useCallback(async () => {
+    setIsLoading(true);
+    try {
+      const [m, b, a] = await Promise.all([
+        supabase.from("members").select("*"),
+        supabase.from("bosses").select("*"),
+        supabase.from("attendance").select("*"),
+      ]);
+
+      setMembers(m.data ?? []);
+      setBosses(b.data ?? []);
+      setAttendance(a.data ?? []);
+    } catch (error) {
+      console.error("데이터 로드 중 오류 발생:", error);
+    } finally {
+      setIsLoading(false);
+    }
   }, []);
 
-  // ✅ 개선: 1주차가 초기화되어 bosses에서 사라져도 2주차 누적 기록이 유지되도록 처리
-  const weekBossIds = useMemo(() => {
-    // 1주차 보스 ID 목록 추출
-    const week1BossIds = bosses.filter((b) => b.week === 1).map((b) => b.id);
-    // 2주차 보스 ID 목록 추출
-    const week2BossIds = bosses.filter((b) => b.week === 2).map((b) => b.id);
+  useEffect(() => {
+    loadData();
+  }, [loadData]);
 
-    if (tab === 1) {
-      return week1BossIds;
-    }
-
-    // ⭐ 핵심: 1주차 보스 데이터가 초기화(삭제)되었더라도, 
-    // 출석(att) 데이터에 남아있는 1주차 흔적이 있다면 그 보스 ID들까지 2주차에 강제로 포함시킵니다.
-    const historicalWeek1Ids = Array.from(
-      new Set(
-        att
-          .filter((a) => !week2BossIds.includes(a.boss_id)) // 2주차가 아닌 것은 과거 데이터로 취급
-          .map((a) => a.boss_id)
-      )
-    );
-
-    // 1주차 기록이 날아갔다면 historical 보스 ID들을 병합하여 2주차(15~28) 연산이 보존되도록 함
-    const mergedWeek1Ids = week1BossIds.length > 0 ? week1BossIds : historicalWeek1Ids;
-
-    return [...mergedWeek1Ids, ...week2BossIds];
-  }, [bosses, att, tab]);
-
-  const stats = useMemo(() => {
-    const total = weekBossIds.length || 1;
-
-    return members
-      .map((m) => {
-        const attended = new Set(
-          att
-            .filter(
-              (a) =>
-                a.user_name === m.name &&
-                a.checked &&
-                weekBossIds.includes(a.boss_id)
-            )
-            .map((a) => a.boss_id)
-        );
-
-        const rate = Math.round((attended.size / total) * 100);
-
-        return {
-          ...m,
-          rate,
-        };
-      })
-      .sort((a, b) => b.rate - a.rate);
-  }, [members, att, weekBossIds]);
-
-  const avgRate = useMemo(() => {
-    if (!stats.length) return 0;
-    return Math.round(
-      stats.reduce((sum, s) => sum + s.rate, 0) / stats.length
-    );
-  }, [stats]);
+  if (isLoading) {
+    return <div className="loading">📊 참여율 데이터를 집계 중입니다...</div>;
+  }
 
   return (
     <div className="wrap">
-      {/* 헤더 */}
-      <h2 className="title">📊 주차별 참여율 정산</h2>
-
-      {/* 요약 카드 */}
-      <div className="summaryCard">
-        <div>
-          <div className="label">전체 평균 참여율</div>
-          <div className="value pink-text">{avgRate}%</div>
-        </div>
-        <div>
-          <div className="label">정산 길드원 수</div>
-          <div className="value">{members.length}명</div>
-        </div>
+      <div className="header-area">
+        <h2>📊 멤버별 레이드 참여율 확인</h2>
+        <button className="refresh-btn" onClick={loadData}>🔄 새로고침</button>
       </div>
 
-      {/* 탭 디자인 개선 */}
-      <div className="tabWrap">
-        {[1, 2].map((w) => (
-          <button
-            key={w}
-            onClick={() => setTab(w as 1 | 2)}
-            className={`tab ${tab === w ? "active" : ""}`}
-          >
-            {w}주차 {w === 1 }
-          </button>
-        ))}
+      <div className="tabs">
+        <button className={week === 1 ? "active" : ""} onClick={() => setWeek(1)}>1주차 내역</button>
+        <button className={week === 2 ? "active" : ""} onClick={() => setWeek(2)}>2주차 내역</button>
       </div>
 
-      {/* 리스트 */}
-      <div className="card">
-        {stats.map((m, index) => {
-          const rate = m.rate;
+      <div className="info-card">
+        📢 현재 <b>{week}주차</b> 실시간 활성화 만점 기준은 <span className="point-text">{totalBossScore}점</span> 입니다.
+      </div>
 
-          const color =
-            rate >= 80 ? "#22c55e" : 
-            rate >= 50 ? "#f59e0b" : 
-            "#ff6fae";
-
+      <div className="list-container">
+        <div className="table-header">
+          <span>이름</span>
+          <span>참여 점수 / 만점</span>
+          <span>최종 참여율</span>
+        </div>
+        
+        {memberStats.map((m) => {
+          const percent = Math.round(m.rate * 100);
           return (
-            <div key={m.id} className="row">
-              <div className="row-header">
-                <div className="left">
-                  <span className="rank">{index + 1}</span>
-                  <span className="name">{m.name}</span>
-                </div>
-                <div className="right">
-                  <b style={{ color }}>{rate}%</b>
-                </div>
-              </div>
-
-              <div className="bar">
-                <div
-                  className="fill"
-                  style={{ width: `${rate}%`, background: color }}
-                />
-              </div>
+            <div key={m.id} className={`row ${percent === 100 ? "perfect" : ""}`}>
+              <span className="member-name">{m.name}</span>
+              <span className="member-score">{m.earnedScore}점 / {totalBossScore}점</span>
+              <span className={`participation-rate p-${percent}`}>
+                {percent}%
+              </span>
             </div>
           );
         })}
       </div>
 
-      {/* 스타일 핑크 에디션 매칭 */}
+      {/* ===== STYLE ===== */}
       <style jsx>{`
-        .wrap {
-          padding: 24px;
-          max-width: 900px;
-          margin: 0 auto;
-          background: #fcf8fa;
-          min-height: 100vh;
-          font-family: system-ui, sans-serif;
-        }
-
-        .title {
-          font-size: 24px;
-          font-weight: 800;
-          color: #4a353d;
-          margin-bottom: 20px;
-        }
-
-        /* 요약 */
-        .summaryCard {
-          display: grid;
-          grid-template-columns: 1fr 1fr;
-          gap: 12px;
-          background: white;
-          padding: 18px;
-          border-radius: 16px;
-          margin-bottom: 20px;
-          box-shadow: 0 4px 12px rgba(74, 53, 61, 0.02);
-          border: 1px solid #fff5f8;
-        }
-
-        .label {
-          font-size: 13px;
-          color: #9c858e;
-          font-weight: 600;
-          margin-bottom: 4px;
-        }
-
-        .value {
-          font-size: 22px;
-          font-weight: 800;
-          color: #4a353d;
-        }
+        .wrap { padding: 24px; max-width: 800px; margin: 0 auto; font-family: system-ui, sans-serif; background-color: #f8fafc; min-height: 100vh; box-sizing: border-box; }
+        .loading { padding: 80px; text-align: center; font-size: 16px; color: #64748b; font-weight: 600; }
         
-        .pink-text {
-          color: #ff6fae;
-        }
-
-        /* 탭 */
-        .tabWrap {
-          display: flex;
-          gap: 10px;
-          margin-bottom: 20px;
-        }
-
-        .tab {
-          flex: 1;
-          padding: 14px;
-          border-radius: 20px;
-          border: 1px solid #ffe1ed;
-          background: white;
-          color: #8a757d;
-          font-weight: 700;
-          font-size: 14px;
-          cursor: pointer;
-          transition: all 0.2s;
-        }
-
-        .tab:hover {
-          background: #fff9fb;
-        }
-
-        .tab.active {
-          background: #ff6fae;
-          color: white;
-          border-color: #ff6fae;
-          box-shadow: 0 4px 12px rgba(255, 111, 174, 0.3);
-        }
-
-        /* 리스트 */
-        .card {
-          background: white;
-          border-radius: 20px;
-          padding: 12px 20px;
-          box-shadow: 0 6px 18px rgba(74, 53, 61, 0.04);
-          border: 1px solid #fff3f7;
-        }
-
-        .row {
-          padding: 16px 0;
-          border-bottom: 1px solid #fff0f5;
-        }
-
-        .row:last-child {
-          border-bottom: none;
-        }
+        .header-area { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; }
+        .header-area h2 { color: #1e293b; font-size: 22px; font-weight: 800; margin: 0; }
         
-        .row-header {
-          display: flex;
-          justify-content: space-between;
-          align-items: center;
-        }
+        .refresh-btn { background: #e2e8f0; color: #475569; font-size: 13px; padding: 8px 14px; border-radius: 12px; border: none; cursor: pointer; font-weight: bold; transition: all 0.2s; }
+        .refresh-btn:hover { background: #cbd5e1; }
 
-        .left {
-          display: flex;
-          gap: 12px;
-          align-items: center;
-        }
+        .tabs { display: flex; gap: 8px; margin-bottom: 16px; }
+        .tabs button { flex: 1; padding: 12px 0; text-align: center; border: 1px solid #e2e8f0; border-radius: 12px; background: white; color: #64748b; cursor: pointer; font-weight: 700; font-size: 14px; transition: all 0.2s; }
+        .tabs button.active { background: #3b82f6; color: white; border-color: #3b82f6; box-shadow: 0 4px 12px rgba(59, 130, 246, 0.25); }
+        
+        .info-card { background: #eff6ff; border: 1px solid #bfdbfe; color: #1e40af; padding: 14px 18px; border-radius: 14px; font-size: 14px; margin-bottom: 20px; }
+        .info-card b { font-weight: 800; }
+        .point-text { color: #2563eb; font-weight: 800; font-size: 16px; }
 
-        .rank {
-          width: 24px;
-          height: 24px;
-          border-radius: 8px;
-          background: #fff0f5;
-          color: #ff6fae;
-          font-weight: 700;
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          font-size: 12px;
-        }
-
-        .name {
-          font-size: 16px;
-          font-weight: 700;
-          color: #332228;
-        }
-
-        .right b {
-          font-size: 16px;
-          font-weight: 800;
-        }
-
-        .bar {
-          height: 8px;
-          background: #f5edf0;
-          border-radius: 999px;
-          overflow: hidden;
-          margin-top: 10px;
-        }
-
-        .fill {
-          height: 100%;
-          transition: width 0.4s cubic-bezier(0.4, 0, 0.2, 1);
-        }
-
-        /* 모바일 대응 */
+        .list-container { background: white; border-radius: 16px; padding: 8px; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05); border: 1px solid #f1f5f9; }
+        .table-header { display: flex; justify-content: space-between; padding: 12px 16px; font-size: 13px; color: #64748b; font-weight: 700; border-bottom: 2px solid #f1f5f9; }
+        .table-header span:nth-child(2) { flex: 1; text-align: right; padding-right: 40px; }
+        
+        .row { display: flex; justify-content: space-between; align-items: center; padding: 14px 16px; border-bottom: 1px solid #f1f5f9; transition: background 0.15s; }
+        .row:last-child { border-bottom: none; }
+        .row:hover { background-color: #f8fafc; }
+        .row.perfect { background-color: #f0fdf4; }
+        
+        .member-name { font-size: 15px; font-weight: 700; color: #0f172a; width: 100px; }
+        .member-score { font-size: 14px; color: #64748b; font-weight: 500; flex: 1; text-align: right; padding-right: 40px; }
+        
+        .participation-rate { font-size: 14px; font-weight: 700; padding: 4px 12px; border-radius: 10px; min-width: 45px; text-align: center; }
+        .p-100 { background: #dcfce7; color: #15803d; }
+        .participation-rate:not(.p-100) { background: #f1f5f9; color: #475569; }
+        
         @media (max-width: 480px) {
-          .wrap { padding: 16px; }
-          .title { font-size: 20px; }
-          .summaryCard { grid-template-columns: 1fr; gap: 16px; }
-          .tab { padding: 12px 8px; font-size: 12px; }
+          .wrap { padding: 16px 8px; }
+          .header-area h2 { font-size: 18px; }
+          .table-header span:nth-child(2), .member-score { padding-right: 15px; }
+          .member-name { width: 70px; font-size: 14px; }
+          .member-score { font-size: 12px; }
+          .participation-rate { font-size: 12px; padding: 4px 8px; min-width: 35px; }
         }
       `}</style>
     </div>
