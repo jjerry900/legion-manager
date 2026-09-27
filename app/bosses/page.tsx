@@ -49,11 +49,13 @@ export default function Page() {
   // 필터링 상태
   const [searchDate, setSearchDate] = useState("");
   const [viewTab, setViewTab] = useState<0 | 1 | 2>(0);
+  const [sortKey, setSortKey] = useState<"date" | "name" | "score" | "week">("date");
+  const [sortAsc, setSortAsc] = useState(false);
 
   // ✅ [추가] 외부 데이터 초기화 함수
   async function resetAllData() {
     const pwCheck = prompt("관리자 비밀번호를 입력하세요.");
-    if (pwCheck !== "1234") return alert("비밀번호가 올바르지 않습니다.");
+    if (pwCheck !== "0910") return alert("비밀번호가 올바르지 않습니다.");
     if (!confirm("정말 모든 데이터를 초기화하시겠습니까? (복구 불가)")) return;
 
     setLoading(true);
@@ -133,13 +135,30 @@ export default function Page() {
 
   async function deleteBoss(e: React.MouseEvent, bossId: string) {
     e.stopPropagation();
-    const pwCheck = prompt("관리자 비밀번호를 입력하세요.");
-    if (pwCheck !== "1234") return alert("비밀번호가 올바르지 않습니다.");
-    if (!confirm("정말 삭제하시겠습니까?")) return;
 
-    await supabase.from("attendance").delete().eq("boss_id", bossId);
-    await supabase.from("bosses").delete().eq("id", bossId);
-    await load();
+    // 삭제 버튼을 누르면 확인창/비밀번호 없이 바로 삭제
+    const { error: attendanceError } = await supabase
+      .from("attendance")
+      .delete()
+      .eq("boss_id", bossId);
+
+    if (attendanceError) {
+      alert("참여 기록 삭제 실패: " + attendanceError.message);
+      return;
+    }
+
+    const { error } = await supabase
+      .from("bosses")
+      .delete()
+      .eq("id", bossId);
+
+    if (error) {
+      alert("보스 삭제 실패: " + error.message);
+      return;
+    }
+
+    setBosses((prev) => prev.filter((b) => b.id !== bossId));
+    setAtt((prev) => prev.filter((a) => a.boss_id !== bossId));
   }
 
   async function openBoss(b: Boss) {
@@ -189,7 +208,7 @@ export default function Page() {
 
   async function save() {
     if (!selectedBoss || !selectedBoss.id) return alert("정산할 보스가 선택되지 않았습니다.");
-    if (pw !== "1234") return alert("비밀번호가 일치하지 않습니다.");
+    if (pw !== "0910") return alert("비밀번호가 일치하지 않습니다.");
     if (saveLoading) return;
 
     setSaveLoading(true);
@@ -228,11 +247,20 @@ export default function Page() {
       .reduce((sum, current) => sum + (current.earned_score ?? 0), 0);
   };
 
-  const filteredBosses = bosses.filter((b) => {
-    const matchDate = !searchDate || b.date === searchDate;
-    const matchWeek = viewTab === 0 || b.week === viewTab;
-    return matchDate && matchWeek;
-  });
+  const filteredBosses = bosses
+    .filter((b) => {
+      const matchDate = !searchDate || b.date === searchDate;
+      const matchWeek = viewTab === 0 || b.week === viewTab;
+      return matchDate && matchWeek;
+    })
+    .sort((a, b) => {
+      let result = 0;
+      if (sortKey === "date") result = String(a.date || "").localeCompare(String(b.date || ""));
+      if (sortKey === "name") result = String(a.name || "").localeCompare(String(b.name || ""), "ko");
+      if (sortKey === "score") result = Number(a.boss_score || 0) - Number(b.boss_score || 0);
+      if (sortKey === "week") result = Number(a.week || 0) - Number(b.week || 0);
+      return sortAsc ? result : -result;
+    });
 
   return (
     <div className="wrap">
@@ -278,6 +306,19 @@ export default function Page() {
             {t === 0 ? "전체 목록" : `${t}주차 보기`}
           </button>
         ))}
+      </div>
+
+      <div className="sortBar">
+        <span>📌 정렬</span>
+        <select value={sortKey} onChange={(e) => setSortKey(e.target.value as typeof sortKey)}>
+          <option value="date">날짜순</option>
+          <option value="week">주차순</option>
+          <option value="name">보스명순</option>
+          <option value="score">점수순</option>
+        </select>
+        <button className="sortBtn" onClick={() => setSortAsc((v) => !v)}>
+          {sortAsc ? "↑ 오름차순" : "↓ 내림차순"}
+        </button>
       </div>
 
       <div className="bossList">
@@ -342,7 +383,7 @@ export default function Page() {
               </div>
             </div>
             <div className="admin-auth">
-              <input type="password" placeholder="🔒 관리자 비밀번호 (1234)" value={pw} onChange={(e) => setPw(e.target.value)} />
+              <input type="password" placeholder="🔒 관리자 비밀번호 (0910)" value={pw} onChange={(e) => setPw(e.target.value)} />
             </div>
             <button className="save" onClick={save} disabled={saveLoading}>
               {saveLoading ? "⏳ 서버에 안전하게 저장 중..." : "🌸 정산 수정 완료 및 닫기"}
@@ -376,6 +417,9 @@ export default function Page() {
         .tabWrap { display: flex; gap: 8px; margin-bottom: 16px; }
         .tab { flex: 1; padding: 12px; border-radius: 14px; background: white; color: #8a757d; border: 1px solid #ffe1ed; font-weight: 700; font-size: 14px; cursor: pointer; }
         .tab.active { background: #ff6fae; color: white; border-color: #ff6fae; }
+        .sortBar { display:flex; align-items:center; gap:8px; margin-bottom:12px; color:#8a757d; font-size:13px; font-weight:700; }
+        .sortBar select, .sortBtn { height:38px; padding:0 12px; border:1px solid #ffe1ed; border-radius:10px; background:white; color:#7a6970; font-weight:700; cursor:pointer; }
+        .sortBtn { color:#ff6fae; }
         .bossList { display: flex; flex-direction: column; gap: 12px; }
         .empty-state { text-align: center; padding: 40px; color: #b09aa4; font-size: 14px; background: white; border-radius: 16px; border: 1px dashed #ffd3e4; }
         .bossCard { background: white; padding: 18px 20px; border-radius: 16px; display: flex; justify-content: space-between; align-items: center; cursor: pointer; border: 1px solid #fff5f8; }
@@ -412,7 +456,14 @@ export default function Page() {
         .admin-auth { width: 100%; }
         .admin-auth input { text-align: center; background: #faf6f8; border-color: #ebdbe1; }
         .save { width: 100%; background: #ff6fae; margin-top: 4px; }
-        @media (max-width: 768px) { .wrap { padding: 16px; } .input-row { flex-direction: column; } }
+        @media (max-width: 768px) {
+          .wrap { padding: 16px; }
+          .input-row { flex-direction: column; }
+          .header-row { align-items:flex-start; flex-direction:column; }
+          .title { font-size:21px; }
+          .sortBar { flex-wrap:wrap; }
+          .sortBar select, .sortBtn { flex:1; min-width:130px; }
+        }
       `}</style>
     </div>
   );

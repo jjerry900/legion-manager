@@ -13,6 +13,8 @@ export default function AttendanceRatePage() {
   const [attendance, setAttendance] = useState<Attendance[]>([]);
   const [week, setWeek] = useState<1 | 2>(1);
   const [isLoading, setIsLoading] = useState(true);
+  const [sortKey, setSortKey] = useState<"rate" | "name" | "score">("rate");
+  const [sortAsc, setSortAsc] = useState(false);
 
   // ==========================================
   // [정밀 동기화] 참여율 연산 로직
@@ -54,8 +56,14 @@ export default function AttendanceRatePage() {
         earnedScore: myEarnedScore,
         rate: myEarnedScore / totalBossScore,
       };
-    }).sort((a, b) => b.rate - a.rate); // 참여율 높은 순 정렬
-  }, [members, attendance, actualActiveBosses, totalBossScore]);
+    }).sort((a, b) => {
+      let result = 0;
+      if (sortKey === "rate") result = a.rate - b.rate;
+      if (sortKey === "score") result = a.earnedScore - b.earnedScore;
+      if (sortKey === "name") result = String(a.name).localeCompare(String(b.name), "ko");
+      return sortAsc ? result : -result;
+    });
+  }, [members, attendance, actualActiveBosses, totalBossScore, sortKey, sortAsc]);
 
   // ==========================================
   // 데이터 로드
@@ -103,6 +111,18 @@ export default function AttendanceRatePage() {
         📢 현재 <b>{week}주차</b> 실시간 활성화 만점 기준은 <span className="point-text">{totalBossScore}점</span> 입니다.
       </div>
 
+      <div className="sort-bar">
+        <span>📌 정렬</span>
+        <select value={sortKey} onChange={(e) => setSortKey(e.target.value as typeof sortKey)}>
+          <option value="rate">참여율순</option>
+          <option value="score">참여 점수순</option>
+          <option value="name">닉네임순</option>
+        </select>
+        <button onClick={() => setSortAsc((v) => !v)}>
+          {sortAsc ? "↑ 오름차순" : "↓ 내림차순"}
+        </button>
+      </div>
+
       <div className="list-container">
         <div className="table-header">
           <span>이름</span>
@@ -143,6 +163,9 @@ export default function AttendanceRatePage() {
         .info-card b { font-weight: 800; }
         .point-text { color: #2563eb; font-weight: 800; font-size: 16px; }
 
+        .sort-bar { display:flex; align-items:center; gap:8px; margin-bottom:12px; color:#64748b; font-size:13px; font-weight:700; }
+        .sort-bar select, .sort-bar button { padding:9px 12px; border:1px solid #e2e8f0; border-radius:10px; background:white; color:#475569; font-weight:700; cursor:pointer; }
+        .sort-bar button { color:#3b82f6; }
         .list-container { background: white; border-radius: 16px; padding: 8px; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.05); border: 1px solid #f1f5f9; }
         .table-header { display: flex; justify-content: space-between; padding: 12px 16px; font-size: 13px; color: #64748b; font-weight: 700; border-bottom: 2px solid #f1f5f9; }
         .table-header span:nth-child(2) { flex: 1; text-align: right; padding-right: 40px; }
@@ -166,6 +189,8 @@ export default function AttendanceRatePage() {
           .member-name { width: 70px; font-size: 14px; }
           .member-score { font-size: 12px; }
           .participation-rate { font-size: 12px; padding: 4px 8px; min-width: 35px; }
+          .sort-bar { flex-wrap:wrap; }
+          .sort-bar select, .sort-bar button { flex:1; }
         }
       `}</style>
     </div>
